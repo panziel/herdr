@@ -90,7 +90,9 @@ pub(super) struct ShellHitMap {
     pub(super) workspace_scroll_metrics: Option<crate::pane::ScrollMetrics>,
     pub(super) workspace_max_scroll: usize,
     pub(super) tabs: Vec<(Rect, String)>,
+    /// Topmost first: floating panes precede the tiled panes they cover.
     pub(super) panes: Vec<PaneHit>,
+    pub(super) pane_surface: Rect,
     pub(super) popup: Option<PaneHit>,
     pub(super) pane_splits: Vec<PaneSplitHit>,
     pub(super) agents: Vec<(Rect, String)>,
@@ -150,6 +152,8 @@ pub(super) struct PaneHit {
     pub(super) scroll: Option<crate::pane::ScrollMetrics>,
     pub(super) pane_id: String,
     pub(super) popup: bool,
+    /// Set for framed floating panes; a zoomed floating pane reads as tiled.
+    pub(super) floating: Option<crate::protocol::ClientShellFloatingPane>,
     pub(super) mouse_reporting: bool,
     pub(super) sgr_pixel_mouse: bool,
     pub(super) pixel_width: u32,
@@ -235,6 +239,7 @@ pub(super) enum ClientChromeDrag {
         last_sent_offset: Option<usize>,
         last_sent_at: Option<std::time::Instant>,
     },
+    FloatingPane(super::floating_drag::FloatingDrag),
 }
 
 pub(super) struct WorkspaceHit {
@@ -529,6 +534,9 @@ pub(super) enum ClientContextMenuAction {
     SplitRight,
     SplitDown,
     Zoom,
+    ToggleFloating,
+    TogglePin,
+    NewFloatingPane,
     ToggleRightClickPassthrough,
     ClosePane,
 }
@@ -553,6 +561,9 @@ pub(super) enum ClientContextMenuTarget {
         source_pane_id: Option<String>,
         has_manual_label: bool,
         right_click_passthrough: bool,
+        floating: Option<crate::protocol::ClientShellFloatingPane>,
+        /// False for the only tiled pane of its tab, which must stay tiled.
+        can_float: bool,
     },
 }
 

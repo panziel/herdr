@@ -1064,6 +1064,14 @@ pub struct ClientShellPane {
     pub foreground_cwd: Option<String>,
     pub focused: bool,
     pub right_click_passthrough: bool,
+    /// Present for floating panes. Older endpoints omit it, so their panes read as tiled.
+    #[serde(default)]
+    pub floating: Option<ClientShellFloatingPane>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClientShellFloatingPane {
+    pub pinned: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -2850,6 +2858,7 @@ mod tests {
                 foreground_cwd: Some("/repo".into()),
                 focused: true,
                 right_click_passthrough: false,
+                floating: None,
             }],
             agents: Vec::new(),
             commands: vec![ClientShellCommand {

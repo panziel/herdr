@@ -236,10 +236,26 @@ impl ClientShellState {
                 workspace_drop_indicator_row,
             },
         );
+        let focused_tab_zoomed = snapshot.focused_tab_id.as_deref().is_some_and(|tab_id| {
+            snapshot
+                .tabs
+                .iter()
+                .any(|tab| tab.tab_id == tab_id && tab.zoomed)
+        });
+        self.hits.pane_surface = layout.pane_surface;
         self.hits.panes = surface
             .panes
             .iter()
             .map(|pane| PaneHit {
+                floating: if focused_tab_zoomed {
+                    None
+                } else {
+                    snapshot
+                        .panes
+                        .iter()
+                        .find(|candidate| candidate.pane_id == pane.pane_id)
+                        .and_then(|candidate| candidate.floating)
+                },
                 rect: Rect::new(
                     layout.pane_surface.x.saturating_add(pane.rect.x),
                     layout.pane_surface.y.saturating_add(pane.rect.y),
@@ -360,7 +376,18 @@ impl ClientShellState {
         if has_selection || has_search {
             let cursor = frame.cursor.clone();
             let mut composed = frame.to_ratatui_buffer()?;
-            for hit in &self.hits.panes {
+            // Paint bottom pane first. Each floating pane first restores its own
+            // cells, so highlights of panes below never show through it.
+            let unhighlighted = self
+                .hits
+                .panes
+                .iter()
+                .any(|hit| hit.floating.is_some())
+                .then(|| composed.clone());
+            for hit in self.hits.panes.iter().rev() {
+                if let (Some(unhighlighted), Some(_)) = (unhighlighted.as_ref(), hit.floating) {
+                    restore_buffer_rect(&mut composed, unhighlighted, hit.rect);
+                }
                 let copy_surface_coherent =
                     client_copy_surface_coherent(self.copy_mode.as_ref(), hit);
                 if copy_surface_coherent {
@@ -434,6 +461,7 @@ impl ClientShellState {
                         && copy_mode.cursor.col < hit.inner_rect.width
                         && x < frame.width
                         && y < frame.height
+                        && !self.pane_covered_at(&hit.pane_id, (x, y))
                     {
                         let mut composed = frame.to_ratatui_buffer()?;
                         occlusion.cover(Rect::new(x, y, 1, 1));
@@ -590,6 +618,7 @@ impl ClientShellState {
                     scroll: None,
                     pane_id: popup.terminal_id.clone(),
                     popup: true,
+                    floating: None,
                     mouse_reporting: popup.mouse_reporting,
                     sgr_pixel_mouse: popup.sgr_pixel_mouse,
                     pixel_width: popup.pixel_width,
@@ -816,6 +845,19 @@ fn client_popup_size(size: crate::protocol::ClientShellPopupSize) -> crate::popu
         }
         crate::protocol::ClientShellPopupSize::Percent(percent) => {
             crate::popup_size::PopupSize::Percent(percent)
+        }
+    }
+}
+
+fn restore_buffer_rect(
+    buffer: &mut ratatui::buffer::Buffer,
+    source: &ratatui::buffer::Buffer,
+    rect: Rect,
+) {
+    let rect = rect.intersection(buffer.area).intersection(source.area);
+    for y in rect.y..rect.bottom() {
+        for x in rect.x..rect.right() {
+            buffer[(x, y)] = source[(x, y)].clone();
         }
     }
 }

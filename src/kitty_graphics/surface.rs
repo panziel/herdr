@@ -572,6 +572,31 @@ pub(crate) fn direct_upload_control(scope: &str, key: &SurfaceGraphicsAssetKey) 
     )
 }
 
+/// Floating panes paint over the panes listed before them, and an image that
+/// any of them touches is hidden whole.
+fn placement_covered_by_floating_pane(
+    pane_infos: &[crate::layout::PaneInfo],
+    floating_start: usize,
+    pane_id: crate::layout::PaneId,
+    clipped: &super::ClippedPlacement,
+) -> bool {
+    if floating_start >= pane_infos.len() {
+        return false;
+    }
+    let Some(index) = pane_infos.iter().position(|info| info.id == pane_id) else {
+        return false;
+    };
+    let image = Rect::new(
+        clipped.x,
+        clipped.y,
+        u16::try_from(clipped.cols).unwrap_or(u16::MAX),
+        u16::try_from(clipped.rows).unwrap_or(u16::MAX),
+    );
+    pane_infos[floating_start.max(index + 1)..]
+        .iter()
+        .any(|info| info.rect.intersects(image))
+}
+
 pub(crate) fn collect_scene(
     app: &crate::app::App,
     surface: crate::ui::TabSurfaceView<'_>,
@@ -684,6 +709,16 @@ pub(crate) fn collect_scene(
         }
     }
 
+    let floating_start = crate::ui::floating_info_start(
+        surface.target.and_then(|target| {
+            app.state
+                .workspaces
+                .get(target.workspace_index)?
+                .tabs
+                .get(target.tab_index)
+        }),
+        surface.pane_infos,
+    );
     let mut placements = Vec::new();
     let mut asset_data = HashMap::<SurfaceGraphicsAssetKey, Vec<u8>>::new();
     let mut sources = SourceFiles::default();
@@ -704,6 +739,14 @@ pub(crate) fn collect_scene(
         let Some((clipped, _)) = clipped_placement(&placement) else {
             continue;
         };
+        if placement_covered_by_floating_pane(
+            surface.pane_infos,
+            floating_start,
+            placement.pane_id,
+            &clipped,
+        ) {
+            continue;
+        }
         let asset = asset_key(source, &placement.placement);
         if !delivered.assets.contains(&asset) {
             if let Some(file) = placement.placement.source_file.take() {

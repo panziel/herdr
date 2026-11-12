@@ -188,7 +188,7 @@ impl App {
         }
         let Some((pane_id, cwd, plan)) = self.state.workspaces.iter().find_map(|ws| {
             ws.tabs.iter().find_map(|tab| {
-                tab.layout.pane_ids().into_iter().find_map(|pane_id| {
+                tab.pane_ids().into_iter().find_map(|pane_id| {
                     let pane = tab.panes.get(&pane_id)?;
                     if &pane.attached_terminal_id != terminal_id {
                         return None;
@@ -325,19 +325,32 @@ fn derived_pending_agent_resume_pane_infos(
     pane_gaps: bool,
     pane_outer_borders: bool,
 ) -> Vec<crate::layout::PaneInfo> {
-    crate::ui::apply_pane_chrome(
+    let tiled = crate::ui::apply_pane_chrome(
         tab.layout.panes(terminal_area),
         pane_borders,
         pane_gaps,
         pane_outer_borders,
-    )
-    .into_iter()
-    .map(|mut info| {
-        let pane_inner = crate::ui::pane_inner_rect(info.rect, info.borders);
-        info.inner_rect = stable_terminal_inner_rect(pane_inner);
-        info
-    })
-    .collect()
+    );
+    let floating = tab.floating.panes().iter().map(|floating| {
+        let rect = floating.rect.resolve(terminal_area);
+        crate::layout::PaneInfo {
+            id: floating.id,
+            rect,
+            inner_rect: rect,
+            scrollbar_rect: None,
+            borders: ratatui::widgets::Borders::ALL,
+            is_focused: false,
+        }
+    });
+    tiled
+        .into_iter()
+        .chain(floating)
+        .map(|mut info| {
+            let pane_inner = crate::ui::pane_inner_rect(info.rect, info.borders);
+            info.inner_rect = stable_terminal_inner_rect(pane_inner);
+            info
+        })
+        .collect()
 }
 
 fn stable_terminal_inner_rect(pane_inner: Rect) -> Rect {

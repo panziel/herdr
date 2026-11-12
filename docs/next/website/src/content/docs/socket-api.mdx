@@ -102,8 +102,8 @@ Raw socket method names use dot notation:
 | Session | `session.snapshot` |
 | Workspace | `workspace.create`, `workspace.list`, `workspace.get`, `workspace.focus`, `workspace.rename`, `workspace.move`, `workspace.move_block`, `workspace.report_metadata`, `workspace.close` |
 | Worktree | `worktree.list`, `worktree.create`, `worktree.open`, `worktree.remove` |
-| Tab | `tab.create`, `tab.list`, `tab.get`, `tab.focus`, `tab.rename`, `tab.move`, `tab.close` |
-| Pane | `pane.split`, `pane.swap`, `pane.move`, `pane.zoom`, `pane.layout`, `pane.process_info`, `pane.neighbor`, `pane.edges`, `pane.focus_direction`, `pane.resize`, `pane.list`, `pane.current`, `pane.get`, `pane.rename`, `pane.send_text`, `pane.send_keys`, `pane.send_input`, `pane.read`, `pane.report_agent`, `pane.report_agent_session`, `pane.report_metadata`, `pane.clear_agent_authority`, `pane.release_agent`, `pane.close`, `pane.wait_for_output` |
+| Tab | `tab.create`, `tab.list`, `tab.get`, `tab.focus`, `tab.rename`, `tab.move`, `tab.close`, `tab.floating.set` |
+| Pane | `pane.split`, `pane.swap`, `pane.move`, `pane.zoom`, `pane.floating.create`, `pane.floating.set`, `pane.pin`, `pane.floating.move`, `pane.floating.geometry`, `pane.layout`, `pane.process_info`, `pane.neighbor`, `pane.edges`, `pane.focus_direction`, `pane.resize`, `pane.list`, `pane.current`, `pane.get`, `pane.rename`, `pane.send_text`, `pane.send_keys`, `pane.send_input`, `pane.read`, `pane.report_agent`, `pane.report_agent_session`, `pane.report_metadata`, `pane.clear_agent_authority`, `pane.release_agent`, `pane.close`, `pane.wait_for_output` |
 | Popup | `popup.close` |
 | Layout | `layout.export`, `layout.apply`, `layout.set_split_ratio` |
 | Agent | `agent.list`, `agent.get`, `agent.read`, `agent.explain`, `agent.send_keys`, `agent.prompt`, `agent.wait`, `agent.rename`, `agent.focus`, `agent.start`, `agent.view.set`, `agent.view.clear` |
@@ -307,6 +307,22 @@ Omitting `pane_id` targets the server's active focused pane. The response is
 `reason`, `pane_id`, `focused_pane_id`, `zoomed`, and `layout`. `changed` is
 true when either zoom state or focus changed. Reason values are `single_pane`,
 `already_zoomed`, and `already_unzoomed`.
+
+Floating panes sit above a tab's split layout. `tab.floating.set` shows, hides,
+or toggles a tab's floating layer and returns `type: "tab_floating"` with
+`changed`, `visible`, `focused_pane_id`, and an optional `created_pane` when
+`create_if_empty` opened the first floating pane. `pane.floating.create`,
+`pane.floating.set`, `pane.pin`, `pane.floating.move`, and
+`pane.floating.geometry` return `type: "pane_info"`. Floating panes include a
+`floating` object with `pinned`, `visible`, and `geometry` in thousandths of the
+tab area:
+
+```json
+{"id":"req_layer","method":"tab.floating.set","params":{"tab_id":"w1:t1","mode":"toggle","create_if_empty":true}}
+{"id":"req_float","method":"pane.floating.set","params":{"pane_id":"w1:p2","mode":"on"}}
+{"id":"req_pin","method":"pane.pin","params":{"pane_id":"w1:p2","mode":"toggle"}}
+{"id":"req_geometry","method":"pane.floating.geometry","params":{"pane_id":"w1:p2","geometry":{"x":100,"y":100,"width":500,"height":400}}}
+```
 
 The CLI wrapper for `notification.show` is:
 

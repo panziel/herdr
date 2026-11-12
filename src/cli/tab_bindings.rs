@@ -1,5 +1,6 @@
 use clap::Command;
 
+use crate::api::schema::floating::TabFloatingProjection;
 use crate::api::schema::tabs::{
     tab_id, TabCreateProjection, TabListProjection, TabRenameProjection,
 };
@@ -13,7 +14,7 @@ cli_projection! {
     }
 }
 
-const LEAVES: [Leaf; 6] = [
+const LEAVES: [Leaf; 7] = [
     Leaf {
         name: "list",
         about: "List tabs",
@@ -55,6 +56,13 @@ const LEAVES: [Leaf; 6] = [
         id: "cli:tab:close",
         arguments: TabTargetProjection::arguments,
         method: |matches| TabTargetProjection::from_matches(matches).map(Method::TabClose),
+    },
+    Leaf {
+        name: "floating",
+        about: "Show, hide or toggle a tab's floating panes",
+        id: "cli:tab:floating",
+        arguments: TabFloatingProjection::arguments,
+        method: |matches| TabFloatingProjection::from_matches(matches).map(Method::TabFloatingSet),
     },
 ];
 
@@ -125,6 +133,14 @@ mod tests {
             (
                 vec!["close", "tab-2"],
                 serde_json::json!({"id":"cli:tab:close","method":"tab.close","params":{"tab_id":"tab-2"}}),
+            ),
+            (
+                vec!["floating"],
+                serde_json::json!({"id":"cli:tab:floating","method":"tab.floating.set","params":{"mode":"toggle"}}),
+            ),
+            (
+                vec!["floating", "--tab", "2", "--show", "--create"],
+                serde_json::json!({"id":"cli:tab:floating","method":"tab.floating.set","params":{"tab_id":"2","mode":"show","create_if_empty":true}}),
             ),
         ] {
             assert_eq!(

@@ -98,8 +98,8 @@ herdr pane read w1:p2 --source recent --lines 50
 | セッション | `session.snapshot` |
 | ワークスペース | `workspace.create`、`workspace.list`、`workspace.get`、`workspace.focus`、`workspace.rename`、`workspace.move`、`workspace.move_block`、`workspace.report_metadata`、`workspace.close` |
 | Worktree | `worktree.list`、`worktree.create`、`worktree.open`、`worktree.remove` |
-| タブ | `tab.create`、`tab.list`、`tab.get`、`tab.focus`、`tab.rename`、`tab.move`、`tab.close` |
-| ペイン | `pane.split`、`pane.swap`、`pane.move`、`pane.zoom`、`pane.layout`、`pane.process_info`、`pane.neighbor`、`pane.edges`、`pane.focus_direction`、`pane.resize`、`pane.list`、`pane.current`、`pane.get`、`pane.rename`、`pane.send_text`、`pane.send_keys`、`pane.send_input`、`pane.read`、`pane.report_agent`、`pane.report_agent_session`、`pane.report_metadata`、`pane.clear_agent_authority`、`pane.release_agent`、`pane.close`、`pane.wait_for_output` |
+| タブ | `tab.create`、`tab.list`、`tab.get`、`tab.focus`、`tab.rename`、`tab.move`、`tab.close`、`tab.floating.set` |
+| ペイン | `pane.split`、`pane.swap`、`pane.move`、`pane.zoom`、`pane.floating.create`、`pane.floating.set`、`pane.pin`、`pane.floating.move`、`pane.floating.geometry`、`pane.layout`、`pane.process_info`、`pane.neighbor`、`pane.edges`、`pane.focus_direction`、`pane.resize`、`pane.list`、`pane.current`、`pane.get`、`pane.rename`、`pane.send_text`、`pane.send_keys`、`pane.send_input`、`pane.read`、`pane.report_agent`、`pane.report_agent_session`、`pane.report_metadata`、`pane.clear_agent_authority`、`pane.release_agent`、`pane.close`、`pane.wait_for_output` |
 | ポップアップ | `popup.close` |
 | レイアウト | `layout.export`、`layout.apply`、`layout.set_split_ratio` |
 | エージェント | `agent.list`、`agent.get`、`agent.read`、`agent.explain`、`agent.send_keys`、`agent.prompt`、`agent.wait`、`agent.rename`、`agent.focus`、`agent.start` |
@@ -234,6 +234,21 @@ macOS では、`pane.send_input`（`pane run` が使用）と `agent.start` は�
 ```
 
 `pane_id` を省略すると、サーバーのアクティブなフォーカス中ペインが対象になります。レスポンスは `type: "pane_zoom"` で、`changed`、`zoom_changed`、`focus_changed`、任意の `reason`、`pane_id`、`focused_pane_id`、`zoomed`、`layout` を含みます。`changed` は、ズーム状態またはフォーカスのどちらかが変わったときに true です。reason の値は `single_pane`、`already_zoomed`、`already_unzoomed` です。
+
+フローティングペインはタブの分割レイアウトの上に表示されます。`tab.floating.set` はタブの
+フローティングレイヤーを表示・非表示・切り替えし、`changed`、`visible`、`focused_pane_id`
+を含む `type: "tab_floating"` を返します。`create_if_empty` で最初のフローティングペインを
+開いた場合は `created_pane` も含みます。`pane.floating.create`、`pane.floating.set`、
+`pane.pin`、`pane.floating.move`、`pane.floating.geometry` は `type: "pane_info"` を返します。
+フローティングペインには、`pinned`、`visible`、タブ領域の千分率で表した `geometry` を持つ
+`floating` オブジェクトが含まれます：
+
+```json
+{"id":"req_layer","method":"tab.floating.set","params":{"tab_id":"w1:t1","mode":"toggle","create_if_empty":true}}
+{"id":"req_float","method":"pane.floating.set","params":{"pane_id":"w1:p2","mode":"on"}}
+{"id":"req_pin","method":"pane.pin","params":{"pane_id":"w1:p2","mode":"toggle"}}
+{"id":"req_geometry","method":"pane.floating.geometry","params":{"pane_id":"w1:p2","geometry":{"x":100,"y":100,"width":500,"height":400}}}
+```
 
 `notification.show` の CLI ラッパーは次のとおりです:
 

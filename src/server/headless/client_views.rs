@@ -232,6 +232,9 @@ impl HeadlessServer {
                 | Method::PaneEditScrollback(_)
                 | Method::PaneMove(_)
                 | Method::PaneSplit(_)
+                | Method::PaneFloatingCreate(_)
+                | Method::PaneFloatingSet(_)
+                | Method::TabFloatingSet(_)
                 | Method::TabClose(_)
                 | Method::TabCreate(_)
                 | Method::WorkspaceClose(_)
@@ -266,6 +269,12 @@ impl HeadlessServer {
                 | Method::PaneSplit(_)
                 | Method::PaneSwap(_)
                 | Method::PaneZoom(_)
+                | Method::PaneFloatingCreate(_)
+                | Method::PaneFloatingGeometry(_)
+                | Method::PaneFloatingMove(_)
+                | Method::PaneFloatingSet(_)
+                | Method::PanePin(_)
+                | Method::TabFloatingSet(_)
                 | Method::TabClose(_)
                 | Method::TabCreate(_)
                 | Method::TabFocus(_)
@@ -299,6 +308,12 @@ impl HeadlessServer {
                 | Method::PaneSplit(_)
                 | Method::PaneSwap(_)
                 | Method::PaneZoom(_)
+                | Method::PaneFloatingCreate(_)
+                | Method::PaneFloatingGeometry(_)
+                | Method::PaneFloatingMove(_)
+                | Method::PaneFloatingSet(_)
+                | Method::PanePin(_)
+                | Method::TabFloatingSet(_)
                 | Method::TabClose(_)
                 | Method::TabCreate(_)
                 | Method::TabFocus(_)
@@ -377,8 +392,7 @@ impl HeadlessServer {
             .get(target.workspace_index)?
             .tabs
             .get(target.tab_index)?
-            .layout
-            .focused();
+            .focused_pane();
         Some(ShellFocusTarget {
             tab_id: self.tab_id_for_target(target)?,
             workspace_index: target.workspace_index,
@@ -511,11 +525,7 @@ impl HeadlessServer {
         else {
             return false;
         };
-        if tab.zoomed {
-            tab.layout.focused() == pane_id
-        } else {
-            tab.layout.pane_ids().contains(&pane_id)
-        }
+        tab.pane_is_visible(pane_id)
     }
 
     fn finish_shell_tab_geometry_change(&mut self, start_pending_agent_resumes: bool) {

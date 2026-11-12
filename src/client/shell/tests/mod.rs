@@ -60,6 +60,7 @@ pub(super) fn snapshot() -> ClientShellSnapshot {
             foreground_cwd: Some("/repo".into()),
             focused: true,
             right_click_passthrough: false,
+            floating: None,
         }],
         agents: Vec::new(),
         commands: Vec::new(),
@@ -200,6 +201,7 @@ fn pane_scroll_result(
                 viewport_rows,
             }),
             revision: 0,
+            floating: None,
         },
     }
 }
@@ -254,6 +256,7 @@ mod close_tab;
 mod copy;
 mod endpoint_requests;
 mod endpoints;
+mod floating_panes;
 mod graphics;
 mod input_conformance;
 #[path = "input.rs"]

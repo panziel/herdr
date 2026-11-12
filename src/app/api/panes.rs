@@ -627,11 +627,17 @@ impl App {
             return encode_error(id, "pane_layout_unavailable", "pane layout unavailable");
         };
         let area = self.state.view.terminal_area;
-        let Some(info) = tab
+        let Some(info_rect) = tab
             .layout
             .panes(area)
             .into_iter()
             .find(|info| info.id == pane_id)
+            .map(|info| info.rect)
+            .or_else(|| {
+                tab.floating
+                    .get(pane_id)
+                    .map(|floating| floating.rect.resolve(area))
+            })
         else {
             return pane_not_found(
                 id,
@@ -650,10 +656,10 @@ impl App {
             ResponseResult::PaneEdges {
                 edges: PaneEdgesResult {
                     pane_id: pane_public_id,
-                    left: info.rect.x <= area.x,
-                    right: info.rect.x + info.rect.width >= area.x + area.width,
-                    up: info.rect.y <= area.y,
-                    down: info.rect.y + info.rect.height >= area.y + area.height,
+                    left: info_rect.x <= area.x,
+                    right: info_rect.x + info_rect.width >= area.x + area.width,
+                    up: info_rect.y <= area.y,
+                    down: info_rect.y + info_rect.height >= area.y + area.height,
                     layout,
                 },
             },
@@ -697,7 +703,7 @@ impl App {
             .workspaces
             .get(ws_idx)
             .and_then(|ws| ws.tabs.get(tab_idx))
-            .map(|tab| tab.layout.focused())
+            .map(crate::workspace::Tab::focused_pane)
             .and_then(|pane_id| self.public_pane_id(ws_idx, pane_id));
         let Some(layout) = self.pane_layout_snapshot(ws_idx, tab_idx) else {
             return encode_error(id, "pane_layout_unavailable", "pane layout unavailable");
@@ -739,12 +745,15 @@ impl App {
             .min(0.5);
         let direction: NavDirection = params.direction.into();
         let area = self.state.view.terminal_area;
-        let changed = self
-            .state
-            .workspaces
-            .get_mut(ws_idx)
-            .and_then(|ws| ws.tabs.get_mut(tab_idx))
-            .is_some_and(|tab| tab.layout.resize_pane(pane_id, direction, amount, area));
+        let changed = if self.state.workspaces[ws_idx].tabs[tab_idx].is_floating(pane_id) {
+            self.resize_floating_pane(ws_idx, tab_idx, pane_id, direction, amount)
+        } else {
+            self.state
+                .workspaces
+                .get_mut(ws_idx)
+                .and_then(|ws| ws.tabs.get_mut(tab_idx))
+                .is_some_and(|tab| tab.layout.resize_pane(pane_id, direction, amount, area))
+        };
         if changed {
             self.schedule_session_save();
         }
@@ -1089,7 +1098,14 @@ impl App {
                                 format!("target pane {raw} is not in tab {tab_id}"),
                             );
                         }
-                        pane_id
+                        // Moved panes join the split tree, so a floating target
+                        // stands for the tab's focused tiled pane.
+                        let target_tab = &self.state.workspaces[target_ws_idx].tabs[target_tab_idx];
+                        if target_tab.is_floating(pane_id) {
+                            target_tab.layout.focused()
+                        } else {
+                            pane_id
+                        }
                     }
                     None => self.state.workspaces[target_ws_idx].tabs[target_tab_idx]
                         .layout
@@ -2086,12 +2102,12 @@ fn normalize_state_labels(
         .collect()
 }
 
-fn pane_not_found(id: String, pane_id: &str) -> String {
+pub(super) fn pane_not_found(id: String, pane_id: &str) -> String {
     encode_error(id, "pane_not_found", format!("pane {pane_id} not found"))
 }
 
 impl App {
-    fn resolve_optional_pane(&self, pane_id: Option<&str>) -> Option<(usize, PaneId)> {
+    pub(super) fn resolve_optional_pane(&self, pane_id: Option<&str>) -> Option<(usize, PaneId)> {
         match pane_id {
             Some(pane_id) => self.parse_pane_id(pane_id),
             None => {
@@ -2114,7 +2130,26 @@ impl App {
         direction: PaneDirection,
     ) -> Option<PaneId> {
         let tab = self.state.workspaces.get(ws_idx)?.tabs.get(tab_idx)?;
-        let panes = tab.layout.panes(self.state.view.terminal_area);
+        let area = self.state.view.terminal_area;
+        // Floating panes navigate among the floating panes on screen.
+        let panes = if tab.is_floating(source_pane_id) {
+            tab.floating
+                .rendered_panes()
+                .map(|floating| {
+                    let rect = floating.rect.resolve(area);
+                    crate::layout::PaneInfo {
+                        id: floating.id,
+                        rect,
+                        inner_rect: rect,
+                        scrollbar_rect: None,
+                        borders: ratatui::widgets::Borders::ALL,
+                        is_focused: floating.id == source_pane_id,
+                    }
+                })
+                .collect()
+        } else {
+            tab.layout.panes(area)
+        };
         let source = panes.iter().find(|pane| pane.id == source_pane_id)?;
         find_in_direction(source, direction.into(), &panes)
     }
@@ -2127,7 +2162,7 @@ impl App {
         let ws = self.state.workspaces.get(ws_idx)?;
         let tab = ws.tabs.get(tab_idx)?;
         let area = self.state.view.terminal_area;
-        let focused_pane_id = self.public_pane_id(ws_idx, tab.layout.focused())?;
+        let focused_pane_id = self.public_pane_id(ws_idx, tab.focused_pane())?;
         let panes = crate::ui::apply_pane_chrome(
             tab.layout.panes(area),
             self.state.pane_borders,
@@ -2203,7 +2238,6 @@ impl App {
             .get(ws_idx)?
             .tabs
             .get(tab_idx)?
-            .layout
             .pane_count();
         (pane_count > 1).then_some((ws_idx, tab_idx))
     }

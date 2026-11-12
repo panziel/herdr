@@ -54,7 +54,7 @@ impl HeadlessServer {
             .get(target.workspace_index)?
             .tabs
             .get(target.tab_index)?;
-        let pane_id = tab.layout.focused();
+        let pane_id = tab.focused_pane();
         self.app
             .state
             .runtime_for_pane_in_workspace(
@@ -90,15 +90,17 @@ impl HeadlessServer {
         if tab.zoomed {
             return false;
         }
-        tab.layout.pane_ids().into_iter().any(|pane_id| {
-            self.app
-                .state
-                .runtime_for_pane_in_workspace(
-                    &self.app.terminal_runtimes,
-                    target.workspace_index,
-                    pane_id,
-                )
-                .is_some_and(crate::terminal::TerminalRuntime::sgr_pixel_mouse_enabled)
+        tab.pane_ids().into_iter().any(|pane_id| {
+            tab.pane_is_visible(pane_id)
+                && self
+                    .app
+                    .state
+                    .runtime_for_pane_in_workspace(
+                        &self.app.terminal_runtimes,
+                        target.workspace_index,
+                        pane_id,
+                    )
+                    .is_some_and(crate::terminal::TerminalRuntime::sgr_pixel_mouse_enabled)
         })
     }
 
@@ -311,11 +313,11 @@ impl HeadlessServer {
                 else {
                     continue;
                 };
-                if tab.zoomed {
-                    pane_ids.insert(tab.layout.focused());
-                } else {
-                    pane_ids.extend(tab.layout.pane_ids());
-                }
+                pane_ids.extend(
+                    tab.pane_ids()
+                        .into_iter()
+                        .filter(|pane_id| tab.pane_is_visible(*pane_id)),
+                );
                 if self.popup_owner_tab_id == self.shell_tab_id_for_client(client_id) {
                     if let Some(popup) = &self.app.state.popup_pane {
                         pane_ids.insert(popup.pane_id);
@@ -438,7 +440,7 @@ impl HeadlessServer {
             else {
                 return false;
             };
-            tab.panes.contains_key(&pane_id) && (!tab.zoomed || tab.layout.focused() == pane_id)
+            tab.pane_is_visible(pane_id)
         })
     }
 

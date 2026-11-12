@@ -245,7 +245,7 @@ impl AppState {
             .get_mut(ws_idx)
             .and_then(|ws| ws.tabs.get_mut(tab_idx))
         {
-            tab.layout.focus_pane(pane_id);
+            tab.focus_pane(pane_id);
             self.previous_pane_focus = previous;
             self.mark_session_dirty();
             return true;
@@ -287,13 +287,10 @@ impl AppState {
             .enumerate()
             .flat_map(|(ws_idx, ws)| {
                 ws.tabs.iter().flat_map(move |tab| {
-                    tab.layout
-                        .pane_ids()
-                        .into_iter()
-                        .filter_map(move |pane_id| {
-                            ws.pane_state(pane_id)
-                                .map(|pane| (ws_idx, pane_id, pane.attached_terminal_id.clone()))
-                        })
+                    tab.pane_ids().into_iter().filter_map(move |pane_id| {
+                        ws.pane_state(pane_id)
+                            .map(|pane| (ws_idx, pane_id, pane.attached_terminal_id.clone()))
+                    })
                 })
             })
             .collect();
@@ -340,14 +337,11 @@ impl AppState {
             .enumerate()
             .flat_map(|(ws_idx, workspace)| {
                 workspace.tabs.iter().flat_map(move |tab| {
-                    tab.layout
-                        .pane_ids()
-                        .into_iter()
-                        .filter_map(move |pane_id| {
-                            workspace
-                                .pane_state(pane_id)
-                                .map(|pane| (ws_idx, pane_id, pane.attached_terminal_id.clone()))
-                        })
+                    tab.pane_ids().into_iter().filter_map(move |pane_id| {
+                        workspace
+                            .pane_state(pane_id)
+                            .map(|pane| (ws_idx, pane_id, pane.attached_terminal_id.clone()))
+                    })
                 })
             })
             .collect::<Vec<_>>();
@@ -588,7 +582,7 @@ impl AppState {
             .get(ws_idx)
             .into_iter()
             .flat_map(|ws| &ws.tabs)
-            .flat_map(|tab| tab.layout.pane_ids())
+            .flat_map(crate::workspace::Tab::pane_ids)
             .collect()
     }
 
@@ -610,7 +604,7 @@ impl AppState {
         self.workspaces
             .get(ws_idx)
             .and_then(|ws| ws.tabs.get(tab_idx))
-            .map(|tab| tab.layout.pane_ids())
+            .map(crate::workspace::Tab::pane_ids)
             .unwrap_or_default()
     }
 
@@ -828,7 +822,7 @@ impl AppState {
             .workspaces
             .get_mut(ws_idx)
             .and_then(|ws| ws.tabs.get_mut(tab_idx))?;
-        if tab.layout.pane_count() <= 1 {
+        if tab.pane_count() <= 1 {
             return Some(PaneZoomOutcome {
                 changed: false,
                 focus_changed,
@@ -929,7 +923,7 @@ impl AppState {
         self.workspaces.get(ws_idx).is_some_and(|ws| {
             let pane_count = ws
                 .active_tab()
-                .map(|tab| tab.layout.pane_count())
+                .map(crate::workspace::Tab::pane_count)
                 .unwrap_or(0);
             pane_count <= 1 && ws.tabs.len() <= 1
         })
@@ -937,9 +931,8 @@ impl AppState {
 
     pub(crate) fn close_pane_would_close_workspace(&self, ws_idx: usize, pane_id: PaneId) -> bool {
         self.workspaces.get(ws_idx).is_some_and(|ws| {
-            ws.find_tab_index_for_pane(pane_id).is_some_and(|tab_idx| {
-                ws.tabs[tab_idx].layout.pane_count() <= 1 && ws.tabs.len() <= 1
-            })
+            ws.find_tab_index_for_pane(pane_id)
+                .is_some_and(|tab_idx| ws.tabs[tab_idx].pane_count() <= 1 && ws.tabs.len() <= 1)
         })
     }
 

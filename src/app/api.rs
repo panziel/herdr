@@ -3,6 +3,7 @@ use std::time::{Duration, Instant};
 mod agent_view;
 mod agents;
 mod env;
+mod floating;
 mod integrations;
 mod layouts;
 mod panes;
@@ -292,7 +293,7 @@ impl App {
                     .get(overlay.ws_idx)
                     .and_then(|ws| ws.tabs.get(overlay.tab_idx));
                 let was_overlay_focused_in_tab =
-                    tab_before_exit.is_some_and(|tab| tab.layout.focused() == *pane_id);
+                    tab_before_exit.is_some_and(|tab| tab.focused_pane() == *pane_id);
                 let tab_zoomed_before_exit = tab_before_exit.map(|tab| tab.zoomed);
                 (
                     overlay,
@@ -1258,6 +1259,22 @@ impl App {
             }
             Method::PluginPaneClose(params) => {
                 return self.handle_plugin_pane_close(request.id, params);
+            }
+            Method::TabFloatingSet(params) => {
+                return self.handle_tab_floating_set(request.id, params);
+            }
+            Method::PaneFloatingCreate(params) => {
+                return self.handle_pane_floating_create(request.id, params);
+            }
+            Method::PaneFloatingSet(params) => {
+                return self.handle_pane_floating_set(request.id, params);
+            }
+            Method::PanePin(params) => return self.handle_pane_pin(request.id, params),
+            Method::PaneFloatingMove(params) => {
+                return self.handle_pane_floating_move(request.id, params);
+            }
+            Method::PaneFloatingGeometry(params) => {
+                return self.handle_pane_floating_geometry(request.id, params);
             }
             _ => {
                 return responses::encode_error(

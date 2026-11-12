@@ -862,9 +862,11 @@ impl ClientShellState {
         action: crate::input::KeybindAction,
     ) -> Option<crate::api::schema::Method> {
         use crate::api::schema::{
-            Method, PaneDirection, PaneFocusDirectionParams, PaneResizeParams, PaneSplitParams,
-            PaneSwapParams, PaneTarget, PaneZoomMode, PaneZoomParams, SplitDirection,
-            TabCreateParams, TabMoveParams, TabTarget, WorkspaceTarget,
+            FloatingFlagMode, FloatingLayerMode, Method, PaneDirection, PaneFloatingCreateParams,
+            PaneFloatingMoveParams, PaneFloatingSetParams, PaneFocusDirectionParams, PanePinParams,
+            PaneResizeParams, PaneSplitParams, PaneSwapParams, PaneTarget, PaneZoomMode,
+            PaneZoomParams, SplitDirection, TabCreateParams, TabFloatingParams, TabMoveParams,
+            TabTarget, WorkspaceTarget,
         };
         use crate::input::KeybindAction;
 
@@ -875,16 +877,20 @@ impl ClientShellState {
         let direction = |action| match action {
             KeybindAction::FocusPaneLeft
             | KeybindAction::SwapPaneLeft
-            | KeybindAction::ResizePaneLeft => Some(PaneDirection::Left),
+            | KeybindAction::ResizePaneLeft
+            | KeybindAction::MoveFloatingPaneLeft => Some(PaneDirection::Left),
             KeybindAction::FocusPaneDown
             | KeybindAction::SwapPaneDown
-            | KeybindAction::ResizePaneDown => Some(PaneDirection::Down),
+            | KeybindAction::ResizePaneDown
+            | KeybindAction::MoveFloatingPaneDown => Some(PaneDirection::Down),
             KeybindAction::FocusPaneUp
             | KeybindAction::SwapPaneUp
-            | KeybindAction::ResizePaneUp => Some(PaneDirection::Up),
+            | KeybindAction::ResizePaneUp
+            | KeybindAction::MoveFloatingPaneUp => Some(PaneDirection::Up),
             KeybindAction::FocusPaneRight
             | KeybindAction::SwapPaneRight
-            | KeybindAction::ResizePaneRight => Some(PaneDirection::Right),
+            | KeybindAction::ResizePaneRight
+            | KeybindAction::MoveFloatingPaneRight => Some(PaneDirection::Right),
             _ => None,
         };
 
@@ -1113,6 +1119,43 @@ impl ClientShellState {
                 direction: direction(action)?,
                 amount: None,
             })),
+            KeybindAction::ToggleFloating => Some(Method::TabFloatingSet(TabFloatingParams {
+                tab_id: focused_tab,
+                mode: FloatingLayerMode::Toggle,
+                create_if_empty: true,
+            })),
+            KeybindAction::NewFloatingPane => {
+                Some(Method::PaneFloatingCreate(PaneFloatingCreateParams {
+                    tab_id: focused_tab,
+                    cwd: None,
+                    focus: true,
+                    env: Default::default(),
+                }))
+            }
+            KeybindAction::ToggleFloatingPin => Some(Method::PanePin(PanePinParams {
+                pane_id: focused_pane,
+                mode: FloatingFlagMode::Toggle,
+            })),
+            KeybindAction::TogglePaneFloating => {
+                Some(Method::PaneFloatingSet(PaneFloatingSetParams {
+                    pane_id: focused_pane,
+                    mode: FloatingFlagMode::Toggle,
+                }))
+            }
+            KeybindAction::MoveFloatingPaneLeft
+            | KeybindAction::MoveFloatingPaneDown
+            | KeybindAction::MoveFloatingPaneUp
+            | KeybindAction::MoveFloatingPaneRight => {
+                let focused_pane = focused_pane?;
+                if !self.pane_is_floating(&focused_pane) {
+                    return None;
+                }
+                Some(Method::PaneFloatingMove(PaneFloatingMoveParams {
+                    pane_id: Some(focused_pane),
+                    direction: direction(action)?,
+                    cells: None,
+                }))
+            }
             _ => None,
         }
     }

@@ -192,6 +192,7 @@ herdr tab get <tab_id>
 herdr tab focus <tab_id>
 herdr tab rename <tab_id> <label>
 herdr tab close <tab_id>
+herdr tab floating [--tab ID] [--toggle|--show|--hide] [--create]
 ```
 
 标签页是工作区内的另一个终端布局。不指定 `--workspace` 时,`tab create` 使用活动工作区;如果没有活动工作区则失败。JSON 响应中的 `.result.tab.tab_id` 和 `.result.root_pane.pane_id` 是对应 ID。关闭工作区的最后一个标签页也会关闭该工作区。启用 `ui.confirm_close` 时，如果关闭父工作树的最后一个标签页会连带关闭整个工作树组，`tab close` 会返回 `confirmation_required` 错误。
@@ -213,6 +214,10 @@ herdr pane edges [--pane ID|--current]
 herdr pane focus --direction left|right|up|down [--pane ID|--current]
 herdr pane resize --direction left|right|up|down [--amount FLOAT] [--pane ID|--current]
 herdr pane zoom [<pane_id>|--pane ID|--current] [--toggle|--on|--off]
+herdr pane float [<pane_id>|--pane ID|--current] [--toggle|--on|--off]
+herdr pane pin [<pane_id>|--pane ID|--current] [--toggle|--on|--off]
+herdr pane new-floating [--tab ID] [--cwd PATH] [--env KEY=VALUE] [--focus|--no-focus]
+herdr pane float-move --direction left|right|up|down [--cells N] [--pane ID|--current]
 herdr pane rename <pane_id> <label>|--clear
 herdr pane split [<pane_id>|--pane ID|--current] --direction right|down [--ratio FLOAT] [--cwd PATH] [--env KEY=VALUE] [--focus] [--no-focus]
 herdr pane swap --direction left|right|up|down [--pane ID|--current]
@@ -222,6 +227,8 @@ herdr pane move <pane_id> --new-tab [--workspace ID] [--label TEXT] [--focus|--n
 herdr pane move <pane_id> --new-workspace [--label TEXT] [--tab-label TEXT] [--focus|--no-focus]
 herdr pane close <pane_id>
 ```
+
+`pane float` 把平铺窗格变成浮动窗格；加 `--off` 时把浮动窗格放回拆分布局。标签页的最后一个平铺窗格不能浮动。`pane pin` 让浮动窗格在标签页浮动层隐藏时仍显示在最上层；对平铺窗格调用会返回 `pane_not_floating` 错误。`pane new-floating` 在活动标签页或 `--tab` 指定的标签页中新建一个运行 shell 的浮动窗格。`pane float-move` 按 `--cells` 移动浮动窗格（默认 4 列或 2 行）；`pane resize` 通过移动右边框或下边框调整浮动窗格大小。`tab floating` 显示或隐藏标签页的浮动层；加 `--create` 时，显示空的浮动层会新建一个浮动窗格。浮动窗格的 JSON 在 `.floating` 下给出固定状态、是否可见，以及以标签页区域千分比表示的位置和大小。
 
 接受 `--current` 的窗格命令在 Herdr 窗格内运行时使用调用方的 `HERDR_PANE_ID`。对 `pane split` 而言，显式窗格 ID 或 `--pane ID` 拆分指定窗格。省略目标时，若存在 `HERDR_PANE_ID` 则拆分调用方窗格，否则使用当前聚焦的窗格。`--current` 必须有调用方窗格；缺少 `HERDR_PANE_ID` 时会报错。拆分响应中的新窗格 ID 位于 `.result.pane.pane_id`。
 

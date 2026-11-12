@@ -1440,7 +1440,7 @@ impl HeadlessServer {
                     .tabs
                     .get(target.tab_index)
             })
-            .map(|tab| tab.layout.focused())
+            .map(crate::workspace::Tab::focused_pane)
             .is_some_and(|pane_id| sources.contains(&pane_id));
         let changes = self.app.sync_terminal_titles(sources);
         let outer_title_synced = focused_source && self.app.window_title_uses_terminal_title();

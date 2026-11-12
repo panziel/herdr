@@ -207,6 +207,25 @@ struct RetainedRecipientUpdate {
     )>,
 }
 
+/// Dirty rows are copied into pane rects, which would paint a tiled pane
+/// over a floating pane above it. Surfaces list floating panes first and tiled
+/// panes cover the whole surface, so a surface has floating panes exactly when
+/// its first pane overlaps another one.
+fn has_overlapping_panes(surface: &protocol::PaneSurfaceFrame) -> bool {
+    let Some((first, rest)) = surface.panes.split_first() else {
+        return false;
+    };
+    rest.iter()
+        .any(|other| surface_rects_overlap(first.rect, other.rect))
+}
+
+fn surface_rects_overlap(a: protocol::SurfaceRect, b: protocol::SurfaceRect) -> bool {
+    a.x < b.x.saturating_add(b.width)
+        && b.x < a.x.saturating_add(a.width)
+        && a.y < b.y.saturating_add(b.height)
+        && b.y < a.y.saturating_add(a.height)
+}
+
 fn has_synchronized_pane(app: &app::App, surface: &protocol::PaneSurfaceFrame) -> bool {
     surface.panes.iter().any(|pane| {
         app.parse_pane_id(&pane.pane_id)
@@ -295,6 +314,9 @@ impl HeadlessServer {
                 || !surface.frame.graphics.is_empty()
             {
                 fallback!("baseline_mismatch");
+            }
+            if has_overlapping_panes(surface) {
+                fallback!("overlapping_panes");
             }
             if has_synchronized_pane(&self.app, surface) {
                 fallback!("synchronized_visible");
@@ -625,6 +647,50 @@ mod tests {
             skip: false,
             hyperlink: None,
         }
+    }
+
+    #[test]
+    fn overlapping_surface_panes_disable_the_retained_path() {
+        let pane = |pane_id: &str, x: u16, width: u16| protocol::PaneSurfacePane {
+            pane_id: pane_id.into(),
+            content_revision: 0,
+            rect: protocol::SurfaceRect {
+                x,
+                y: 0,
+                width,
+                height: 10,
+            },
+            inner_rect: protocol::SurfaceRect {
+                x,
+                y: 0,
+                width,
+                height: 10,
+            },
+            scrollbar_rect: None,
+            scroll: None,
+            focused: false,
+            mouse_reporting: false,
+            sgr_pixel_mouse: false,
+            alternate_screen_active: false,
+            pixel_width: 0,
+            pixel_height: 0,
+        };
+        let mut surface = protocol::PaneSurfaceFrame {
+            boot_id: "boot".into(),
+            projection_revision: 1,
+            surface_revision: 1,
+            frame: FrameData::from_ratatui_buffer(
+                &ratatui::buffer::Buffer::empty(Rect::new(0, 0, 40, 10)),
+                None,
+            ),
+            panes: vec![pane("left", 0, 20), pane("right", 20, 20)],
+            splits: Vec::new(),
+            popup: None,
+            graphics: Default::default(),
+        };
+        assert!(!has_overlapping_panes(&surface));
+        surface.panes.insert(0, pane("floating", 10, 15));
+        assert!(has_overlapping_panes(&surface));
     }
 
     #[test]

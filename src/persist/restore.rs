@@ -126,8 +126,9 @@ pub fn handoff_pane_aliases(
     let mut aliases = HashMap::new();
     for (ws_snap, workspace) in snapshot.workspaces.iter().zip(workspaces) {
         for (tab_snap, tab) in ws_snap.tabs.iter().zip(&workspace.tabs) {
-            let old_ids = collect_snapshot_pane_ids(&tab_snap.layout);
-            let new_ids = tab.layout.pane_ids();
+            let mut old_ids = collect_snapshot_pane_ids(&tab_snap.layout);
+            old_ids.extend(tab_snap.floating.iter().map(|floating| floating.pane));
+            let new_ids = tab.pane_ids();
             for (old_id, new_id) in old_ids.into_iter().zip(new_ids) {
                 if old_id != new_id.raw() {
                     aliases.insert(old_id, new_id);
@@ -164,6 +165,7 @@ fn migrated_public_pane_numbers_by_old_raw(
     for tab in &snap.tabs {
         let mut pane_ids = Vec::new();
         collect_layout_snapshot_pane_ids(&tab.layout, &mut pane_ids);
+        pane_ids.extend(tab.floating.iter().map(|floating| floating.pane));
         for old_raw in pane_ids {
             public_numbers.entry(old_raw).or_insert_with(|| {
                 let number = *next_public_pane_number;
@@ -385,7 +387,7 @@ fn restore_workspace(
             tab.number = public_tab_number;
         }
         next_public_tab_number = next_public_tab_number.max(tab.number + 1);
-        for pane_id in tab.layout.pane_ids() {
+        for pane_id in tab.pane_ids() {
             let public_number = public_pane_numbers_by_old_raw
                 .get(
                     &reverse_id_map
@@ -500,7 +502,9 @@ fn restore_tab(
     imported_panes: &mut HashMap<u32, crate::handoff_runtime::ImportedHandoffRuntime>,
     public_pane_ids_by_old_raw: &HashMap<u32, String>,
 ) -> RestoreFailures<Option<RestoredTab>> {
-    let (node, id_map) = restore_node_remapped(&snap.layout);
+    let (node, mut id_map) = restore_node_remapped(&snap.layout);
+    let floating_restores = remap_floating_ids(&snap.floating, &mut id_map);
+    let floating_ids: Vec<PaneId> = floating_restores.iter().map(|(_, id)| *id).collect();
     let reverse_id_map: HashMap<PaneId, u32> = id_map
         .iter()
         .map(|(&old_id, &new_id)| (new_id, old_id))
@@ -511,7 +515,7 @@ fn restore_tab(
     let mut terminals = Vec::new();
     let mut terminal_runtimes = HashMap::new();
     let mut failed_imports = 0;
-    for id in &pane_ids {
+    for id in pane_ids.iter().chain(floating_ids.iter()) {
         let old_id = reverse_id_map.get(id);
         let saved_pane = old_id.and_then(|old_id| snap.panes.get(old_id));
         let saved_cwd = saved_pane
@@ -770,22 +774,35 @@ fn restore_tab(
     }
 
     let surviving: HashSet<PaneId> = panes.keys().copied().collect();
-    let Some(node) = prune_restored_node(node, &surviving) else {
-        warn!(
-            tab = ?snap.custom_name,
-            "restored tab lost all panes after pruning missing layout nodes"
-        );
-        return (None, failed_imports);
+    let mut floating_panes = restored_floating_panes(&floating_restores, &surviving);
+    let node = match prune_restored_node(node, &surviving) {
+        Some(node) => node,
+        // Keep surviving floating panes by promoting the top one into the tiled layout.
+        None => match floating_panes.pop() {
+            Some(promoted) => Node::Pane(promoted.id),
+            None => {
+                warn!(
+                    tab = ?snap.custom_name,
+                    "restored tab lost all panes after pruning missing layout nodes"
+                );
+                return (None, failed_imports);
+            }
+        },
     };
     let pane_ids = collect_pane_ids(&node);
-    let Some(focus) = resolve_restored_pane(snap.focused, &id_map, &surviving, &pane_ids) else {
+    let tiled_surviving: HashSet<PaneId> = pane_ids.iter().copied().collect();
+    let Some(focus) = resolve_restored_pane(snap.focused, &id_map, &tiled_surviving, &pane_ids)
+    else {
         return (None, failed_imports);
     };
-    let Some(root_pane) = resolve_restored_pane(snap.root_pane, &id_map, &surviving, &pane_ids)
+    let Some(root_pane) =
+        resolve_restored_pane(snap.root_pane, &id_map, &tiled_surviving, &pane_ids)
     else {
         return (None, failed_imports);
     };
     let layout = TileLayout::from_saved(node, focus);
+    let floating =
+        crate::workspace::FloatingLayer::from_saved(floating_panes, snap.floating_visible);
 
     (
         Some((
@@ -798,6 +815,7 @@ fn restore_tab(
                 #[cfg(test)]
                 runtimes: HashMap::new(),
                 zoomed: snap.zoomed,
+                floating,
                 events: runtime_context.events.clone(),
                 render_notify: runtime_context.render_notify.clone(),
                 render_dirty: runtime_context.render_dirty.clone(),
@@ -918,6 +936,43 @@ fn take_restore_plan_for_snapshot(
 ) -> Option<crate::agent_resume::AgentResumePlan> {
     restore_plan_for_snapshot(session, resume_agents_on_restore)
         .filter(|plan| resumed_agent_sessions.insert(plan.dedupe_key.clone()))
+}
+
+/// Allocate fresh pane ids for saved floating panes, in saved bottom-to-top
+/// order. Entries that duplicate a tiled pane or an earlier floating pane are skipped.
+fn remap_floating_ids(
+    floating: &[super::snapshot::FloatingPaneSnapshot],
+    id_map: &mut HashMap<u32, PaneId>,
+) -> Vec<(super::snapshot::FloatingPaneSnapshot, PaneId)> {
+    let mut restores = Vec::with_capacity(floating.len());
+    for saved in floating {
+        if id_map.contains_key(&saved.pane) {
+            warn!(
+                pane_id = saved.pane,
+                "ignoring duplicate saved floating pane"
+            );
+            continue;
+        }
+        let new_id = PaneId::alloc();
+        id_map.insert(saved.pane, new_id);
+        restores.push((*saved, new_id));
+    }
+    restores
+}
+
+fn restored_floating_panes(
+    restores: &[(super::snapshot::FloatingPaneSnapshot, PaneId)],
+    surviving: &HashSet<PaneId>,
+) -> Vec<crate::workspace::FloatingPane> {
+    restores
+        .iter()
+        .filter(|(_, id)| surviving.contains(id))
+        .map(|(saved, id)| crate::workspace::FloatingPane {
+            id: *id,
+            rect: crate::workspace::FloatingRect::new(saved.x, saved.y, saved.width, saved.height),
+            pinned: saved.pinned,
+        })
+        .collect()
 }
 
 pub(super) fn prune_restored_node(node: Node, surviving: &HashSet<PaneId>) -> Option<Node> {
@@ -1559,6 +1614,8 @@ mod tests {
                     zoomed: false,
                     focused: Some(0),
                     root_pane: Some(0),
+                    floating: Vec::new(),
+                    floating_visible: false,
                 }],
                 active_tab: 0,
             }],
@@ -1654,6 +1711,8 @@ mod tests {
                     zoomed: false,
                     focused: Some(10),
                     root_pane: Some(10),
+                    floating: Vec::new(),
+                    floating_visible: false,
                 }],
                 active_tab: 0,
             }],
@@ -1686,6 +1745,110 @@ mod tests {
         assert_eq!(workspace.next_public_pane_number, 4);
         assert_eq!(workspace.tabs[0].number, 5);
         assert_eq!(workspace.next_public_tab_number, 6);
+    }
+
+    #[tokio::test]
+    async fn restore_keeps_floating_panes_geometry_pin_and_public_ids() {
+        let cwd = std::env::current_dir().unwrap();
+        let pane = || super::super::snapshot::PaneSnapshot {
+            cwd: cwd.clone(),
+            label: None,
+            agent_name: None,
+            managed_agent_kind: None,
+            agent_session: None,
+            agent_resume: None,
+            launch_argv: None,
+        };
+        let floating = |pane, x, pinned| super::super::snapshot::FloatingPaneSnapshot {
+            pane,
+            x,
+            y: 100,
+            width: 500,
+            height: 400,
+            pinned,
+        };
+        let snapshot = SessionSnapshot {
+            version: super::super::snapshot::SNAPSHOT_VERSION,
+            workspaces: vec![WorkspaceSnapshot {
+                id: Some("w1".into()),
+                custom_name: None,
+                identity_cwd: cwd.clone(),
+                worktree_space: None,
+                public_pane_numbers: HashMap::from([(10, 1), (20, 2), (30, 4)]),
+                next_public_pane_number: 5,
+                public_tab_numbers: vec![1],
+                next_public_tab_number: 2,
+                tabs: vec![TabSnapshot {
+                    custom_name: None,
+                    layout: LayoutSnapshot::Pane(10),
+                    panes: HashMap::from([(10, pane()), (20, pane()), (30, pane())]),
+                    zoomed: false,
+                    focused: Some(10),
+                    root_pane: Some(10),
+                    floating: vec![floating(20, 50, true), floating(30, 300, false)],
+                    floating_visible: true,
+                }],
+                active_tab: 0,
+            }],
+            active: Some(0),
+            selected: 0,
+            sidebar_width: None,
+            sidebar_section_split: None,
+            collapsed_space_keys: Default::default(),
+        };
+        let (events, _event_rx) = mpsc::channel(4);
+
+        let (workspaces, terminals, _runtimes) = restore(
+            &snapshot,
+            None,
+            24,
+            80,
+            0,
+            test_restore_shell(),
+            crate::config::ShellModeConfig::NonLogin,
+            false,
+            events,
+            Arc::new(Notify::new()),
+            Arc::new(RenderSignal::new()),
+        );
+
+        let workspace = workspaces.first().expect("workspace should restore");
+        workspace.assert_invariants_for_test();
+        let tab = &workspace.tabs[0];
+        assert!(tab.floating.is_visible());
+        let restored: Vec<_> = tab
+            .floating
+            .panes()
+            .iter()
+            .map(|pane| {
+                (
+                    workspace.public_pane_number(pane.id),
+                    pane.rect.x,
+                    pane.pinned,
+                )
+            })
+            .collect();
+        assert_eq!(restored, vec![(Some(2), 50, true), (Some(4), 300, false)]);
+        assert_eq!(
+            workspace.focused_pane_id(),
+            tab.floating.top().map(|pane| pane.id)
+        );
+        assert_eq!(workspace.public_pane_number(tab.root_pane), Some(1));
+
+        let captured = super::super::snapshot::capture(
+            &workspaces,
+            &terminals,
+            &crate::terminal::TerminalRuntimeRegistry::new(),
+            Some(0),
+            0,
+        );
+        let tab = &captured.workspaces[0].tabs[0];
+        assert_eq!(tab.floating.len(), 2);
+        assert!(tab.floating_visible);
+        assert!(tab
+            .floating
+            .iter()
+            .all(|saved| tab.panes.contains_key(&saved.pane)));
     }
 
     #[tokio::test]
@@ -1738,6 +1901,8 @@ mod tests {
                         zoomed: false,
                         focused: Some(10),
                         root_pane: Some(10),
+                        floating: Vec::new(),
+                        floating_visible: false,
                     },
                     TabSnapshot {
                         custom_name: None,
@@ -1746,6 +1911,8 @@ mod tests {
                         zoomed: false,
                         focused: Some(11),
                         root_pane: Some(11),
+                        floating: Vec::new(),
+                        floating_visible: false,
                     },
                     TabSnapshot {
                         custom_name: None,
@@ -1754,6 +1921,8 @@ mod tests {
                         zoomed: false,
                         focused: Some(12),
                         root_pane: Some(12),
+                        floating: Vec::new(),
+                        floating_visible: false,
                     },
                     TabSnapshot {
                         custom_name: None,
@@ -1762,6 +1931,8 @@ mod tests {
                         zoomed: false,
                         focused: Some(13),
                         root_pane: Some(13),
+                        floating: Vec::new(),
+                        floating_visible: false,
                     },
                 ],
                 active_tab: 3,
@@ -1825,6 +1996,8 @@ mod tests {
                 zoomed: false,
                 focused: Some(10),
                 root_pane: Some(10),
+                floating: Vec::new(),
+                floating_visible: false,
             }],
             active_tab: 0,
         };
@@ -1875,6 +2048,8 @@ mod tests {
                     zoomed: false,
                     focused: Some(0),
                     root_pane: Some(0),
+                    floating: Vec::new(),
+                    floating_visible: false,
                 }],
                 active_tab: 0,
             }],
@@ -2215,6 +2390,8 @@ mod tests {
                     zoomed: false,
                     focused: Some(0),
                     root_pane: Some(0),
+                    floating: Vec::new(),
+                    floating_visible: false,
                 }],
                 active_tab: 0,
             }],

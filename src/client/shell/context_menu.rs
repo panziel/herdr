@@ -54,6 +54,8 @@ impl ClientContextMenuOverlay {
                 source_pane_id,
                 has_manual_label,
                 right_click_passthrough,
+                floating,
+                can_float,
                 ..
             } => {
                 let mut items = vec![item("Rename pane", Action::RenamePane)];
@@ -67,6 +69,24 @@ impl ClientContextMenuOverlay {
                     item("Split right", Action::SplitRight),
                     item("Split down", Action::SplitDown),
                     item("Zoom", Action::Zoom),
+                    item("New floating pane", Action::NewFloatingPane),
+                ]);
+                if floating.is_some() {
+                    items.push(item("Embed pane", Action::ToggleFloating));
+                } else if *can_float {
+                    items.push(item("Make pane floating", Action::ToggleFloating));
+                }
+                if let Some(floating) = floating {
+                    items.push(item(
+                        if floating.pinned {
+                            "Unpin floating pane"
+                        } else {
+                            "Pin floating pane"
+                        },
+                        Action::TogglePin,
+                    ));
+                }
+                items.extend([
                     item(
                         if *right_click_passthrough {
                             "Use Herdr right-click menu"
@@ -153,6 +173,12 @@ impl ClientShellState {
             .focused_pane_id
             .clone()
             .filter(|focused| focused != &pane_id);
+        let can_float = snapshot
+            .panes
+            .iter()
+            .filter(|candidate| candidate.tab_id == pane.tab_id && candidate.floating.is_none())
+            .count()
+            > 1;
         self.overlay = Some(ClientShellOverlay::ContextMenu(ClientContextMenuOverlay {
             target: ClientContextMenuTarget::Pane {
                 pane_id,
@@ -160,6 +186,8 @@ impl ClientShellState {
                 source_pane_id,
                 has_manual_label: pane.label.is_some(),
                 right_click_passthrough: pane.right_click_passthrough,
+                floating: pane.floating,
+                can_float,
             },
             x,
             y,
@@ -365,8 +393,10 @@ impl ClientShellState {
         outcome: &mut ClientShellInput,
     ) {
         use crate::api::schema::{
-            Method, PaneInputSetParams, PaneRenameParams, PaneRightClickTarget, PaneSplitParams,
-            PaneSwapParams, PaneTarget, PaneZoomMode, PaneZoomParams, SplitDirection,
+            FloatingFlagMode, Method, PaneFloatingCreateParams, PaneFloatingSetParams,
+            PaneInputSetParams, PanePinParams, PaneRenameParams, PaneRightClickTarget,
+            PaneSplitParams, PaneSwapParams, PaneTarget, PaneZoomMode, PaneZoomParams,
+            SplitDirection,
         };
 
         match action {
@@ -433,6 +463,38 @@ impl ClientShellState {
                 Method::PaneZoom(PaneZoomParams {
                     pane_id: Some(pane_id),
                     mode: PaneZoomMode::Toggle,
+                }),
+                outcome,
+            ),
+            ClientContextMenuAction::ToggleFloating => self.push_endpoint_method(
+                Method::PaneFloatingSet(PaneFloatingSetParams {
+                    pane_id: Some(pane_id),
+                    mode: FloatingFlagMode::Toggle,
+                }),
+                outcome,
+            ),
+            ClientContextMenuAction::NewFloatingPane => {
+                let tab_id = self.snapshot.as_deref().and_then(|snapshot| {
+                    snapshot
+                        .panes
+                        .iter()
+                        .find(|pane| pane.pane_id == pane_id)
+                        .map(|pane| pane.tab_id.clone())
+                });
+                self.push_endpoint_method(
+                    Method::PaneFloatingCreate(PaneFloatingCreateParams {
+                        tab_id,
+                        cwd: None,
+                        focus: true,
+                        env: Default::default(),
+                    }),
+                    outcome,
+                );
+            }
+            ClientContextMenuAction::TogglePin => self.push_endpoint_method(
+                Method::PanePin(PanePinParams {
+                    pane_id: Some(pane_id),
+                    mode: FloatingFlagMode::Toggle,
                 }),
                 outcome,
             ),

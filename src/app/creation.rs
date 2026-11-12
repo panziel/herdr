@@ -94,7 +94,7 @@ impl App {
     ) -> PathBuf {
         let follow_cwd = tab_idx
             .and_then(|tab_idx| self.state.workspaces.get(ws_idx)?.tabs.get(tab_idx))
-            .map(|tab| tab.layout.focused())
+            .map(crate::workspace::Tab::focused_pane)
             .and_then(|pane_id| self.launch_cwd_for_pane_in_workspace(ws_idx, pane_id))
             .or_else(|| self.seed_cwd_from_workspace(ws_idx));
         self.resolve_new_terminal_cwd(follow_cwd)
@@ -180,7 +180,7 @@ impl App {
             Ok(ws
                 .tabs
                 .iter()
-                .flat_map(|tab| tab.layout.pane_ids().into_iter())
+                .flat_map(|tab| tab.pane_ids().into_iter())
                 .filter_map(|pane_id| self.pane_info(ws_idx, pane_id))
                 .collect())
         } else {
@@ -192,7 +192,7 @@ impl App {
                 .flat_map(|(ws_idx, ws)| {
                     ws.tabs
                         .iter()
-                        .flat_map(|tab| tab.layout.pane_ids().into_iter())
+                        .flat_map(|tab| tab.pane_ids().into_iter())
                         .filter_map(move |pane_id| self.pane_info(ws_idx, pane_id))
                 })
                 .collect())
@@ -361,6 +361,18 @@ impl App {
             tokens: terminal.metadata_tokens.values(),
             agent_session: terminal_agent_session_info(terminal),
             scroll: None,
+            floating: ws.tabs[tab_idx].floating.get(pane_id).map(|floating| {
+                crate::api::schema::PaneFloatingInfo {
+                    pinned: floating.pinned,
+                    visible: ws.tabs[tab_idx].floating.is_rendered(pane_id),
+                    geometry: crate::api::schema::FloatingGeometry {
+                        x: floating.rect.x,
+                        y: floating.rect.y,
+                        width: floating.rect.width,
+                        height: floating.rect.height,
+                    },
+                }
+            }),
             revision: terminal.revision,
         })
     }

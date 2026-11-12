@@ -757,6 +757,63 @@
           ],
           "type": "string"
         },
+        "FloatingGeometry": {
+          "description": "Absolute floating pane geometry in thousandths of the tab area.",
+          "properties": {
+            "height": {
+              "format": "uint16",
+              "maximum": 65535,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "width": {
+              "format": "uint16",
+              "maximum": 65535,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "x": {
+              "format": "uint16",
+              "maximum": 65535,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "y": {
+              "format": "uint16",
+              "maximum": 65535,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "x",
+            "y",
+            "width",
+            "height"
+          ],
+          "type": "object"
+        },
+        "PaneFloatingInfo": {
+          "description": "Floating state of a pane in `PaneInfo`.",
+          "properties": {
+            "geometry": {
+              "$ref": "#/schemas/event/$defs/FloatingGeometry"
+            },
+            "pinned": {
+              "type": "boolean"
+            },
+            "visible": {
+              "description": "Drawn on screen: the floating layer is shown or the pane is pinned.",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "pinned",
+            "visible",
+            "geometry"
+          ],
+          "type": "object"
+        },
         "PaneInfo": {
           "properties": {
             "agent": {
@@ -788,6 +845,16 @@
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "floating": {
+              "anyOf": [
+                {
+                  "$ref": "#/schemas/event/$defs/PaneFloatingInfo"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "focused": {
@@ -2151,6 +2218,60 @@
           ],
           "type": "object"
         },
+        "FloatingFlagMode": {
+          "description": "Toggle, set or clear a per-pane floating flag.",
+          "enum": [
+            "toggle",
+            "on",
+            "off"
+          ],
+          "type": "string"
+        },
+        "FloatingGeometry": {
+          "description": "Absolute floating pane geometry in thousandths of the tab area.",
+          "properties": {
+            "height": {
+              "format": "uint16",
+              "maximum": 65535,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "width": {
+              "format": "uint16",
+              "maximum": 65535,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "x": {
+              "format": "uint16",
+              "maximum": 65535,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "y": {
+              "format": "uint16",
+              "maximum": 65535,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "x",
+            "y",
+            "width",
+            "height"
+          ],
+          "type": "object"
+        },
+        "FloatingLayerMode": {
+          "description": "How `tab.floating.set` changes the floating layer of a tab.",
+          "enum": [
+            "toggle",
+            "show",
+            "hide"
+          ],
+          "type": "string"
+        },
         "IntegrationInstallParams": {
           "properties": {
             "target": {
@@ -2581,6 +2702,90 @@
           },
           "type": "object"
         },
+        "PaneFloatingCreateParams": {
+          "properties": {
+            "cwd": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "env": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "focus": {
+              "default": true,
+              "type": "boolean"
+            },
+            "tab_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "PaneFloatingGeometryParams": {
+          "properties": {
+            "geometry": {
+              "$ref": "#/schemas/request/$defs/FloatingGeometry"
+            },
+            "pane_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "pane_id",
+            "geometry"
+          ],
+          "type": "object"
+        },
+        "PaneFloatingMoveParams": {
+          "properties": {
+            "cells": {
+              "description": "Distance in terminal cells. Defaults to a few cells.",
+              "format": "uint16",
+              "maximum": 65535,
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "direction": {
+              "$ref": "#/schemas/request/$defs/PaneDirection"
+            },
+            "pane_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "direction"
+          ],
+          "type": "object"
+        },
+        "PaneFloatingSetParams": {
+          "properties": {
+            "mode": {
+              "$ref": "#/schemas/request/$defs/FloatingFlagMode",
+              "default": "toggle"
+            },
+            "pane_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
         "PaneFocusDirectionParams": {
           "properties": {
             "direction": {
@@ -2795,6 +3000,21 @@
           "required": [
             "direction"
           ],
+          "type": "object"
+        },
+        "PanePinParams": {
+          "properties": {
+            "mode": {
+              "$ref": "#/schemas/request/$defs/FloatingFlagMode",
+              "default": "toggle"
+            },
+            "pane_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
           "type": "object"
         },
         "PaneProcessInfoParams": {
@@ -4295,6 +4515,25 @@
               ]
             },
             "workspace_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "TabFloatingParams": {
+          "properties": {
+            "create_if_empty": {
+              "description": "Open a floating pane when showing a layer that has none.",
+              "type": "boolean"
+            },
+            "mode": {
+              "$ref": "#/schemas/request/$defs/FloatingLayerMode",
+              "default": "toggle"
+            },
+            "tab_id": {
               "type": [
                 "string",
                 "null"
@@ -6312,6 +6551,102 @@
             "params"
           ],
           "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "tab.floating.set",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/TabFloatingParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "pane.floating.create",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/PaneFloatingCreateParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "pane.floating.set",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/PaneFloatingSetParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "pane.pin",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/PanePinParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "pane.floating.move",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/PaneFloatingMoveParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "pane.floating.geometry",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/PaneFloatingGeometryParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
         }
       ],
       "properties": {
@@ -7485,6 +7820,42 @@
           ],
           "type": "string"
         },
+        "FloatingGeometry": {
+          "description": "Absolute floating pane geometry in thousandths of the tab area.",
+          "properties": {
+            "height": {
+              "format": "uint16",
+              "maximum": 65535,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "width": {
+              "format": "uint16",
+              "maximum": 65535,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "x": {
+              "format": "uint16",
+              "maximum": 65535,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "y": {
+              "format": "uint16",
+              "maximum": 65535,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "x",
+            "y",
+            "width",
+            "height"
+          ],
+          "type": "object"
+        },
         "InstalledPluginInfo": {
           "properties": {
             "actions": {
@@ -7824,6 +8195,27 @@
           ],
           "type": "object"
         },
+        "PaneFloatingInfo": {
+          "description": "Floating state of a pane in `PaneInfo`.",
+          "properties": {
+            "geometry": {
+              "$ref": "#/schemas/success_response/$defs/FloatingGeometry"
+            },
+            "pinned": {
+              "type": "boolean"
+            },
+            "visible": {
+              "description": "Drawn on screen: the floating layer is shown or the pane is pinned.",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "pinned",
+            "visible",
+            "geometry"
+          ],
+          "type": "object"
+        },
         "PaneFocusDirectionReason": {
           "enum": [
             "no_neighbor"
@@ -7896,6 +8288,16 @@
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "floating": {
+              "anyOf": [
+                {
+                  "$ref": "#/schemas/success_response/$defs/PaneFloatingInfo"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "focused": {
@@ -9640,6 +10042,22 @@
             },
             {
               "properties": {
+                "floating": {
+                  "$ref": "#/schemas/success_response/$defs/TabFloatingResult"
+                },
+                "type": {
+                  "const": "tab_floating",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "floating"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
                 "layout": {
                   "$ref": "#/schemas/success_response/$defs/PaneLayoutSnapshot"
                 },
@@ -10533,6 +10951,39 @@
             "down"
           ],
           "type": "string"
+        },
+        "TabFloatingResult": {
+          "properties": {
+            "changed": {
+              "type": "boolean"
+            },
+            "created_pane": {
+              "anyOf": [
+                {
+                  "$ref": "#/schemas/success_response/$defs/PaneInfo"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "focused_pane_id": {
+              "type": "string"
+            },
+            "tab_id": {
+              "type": "string"
+            },
+            "visible": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "tab_id",
+            "changed",
+            "visible",
+            "focused_pane_id"
+          ],
+          "type": "object"
         },
         "TabInfo": {
           "properties": {

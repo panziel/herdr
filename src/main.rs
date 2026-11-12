@@ -192,6 +192,10 @@ const DEFAULT_CONFIG: &str = r##"# herdr configuration
 # resize_pane_up = ""     # optional, e.g. "ctrl+shift+alt+up"
 # resize_pane_right = ""  # optional, e.g. "ctrl+shift+alt+right"
 # toggle_sidebar = "prefix+b"
+# toggle_floating = "prefix+f"       # show/hide floating panes; opens one when the tab has none
+# new_floating_pane = "prefix+shift+f"
+# toggle_floating_pin = "prefix+i"   # pinned floating panes stay on top while the layer is hidden
+# toggle_pane_floating = ""          # optional, unset by default; floats or embeds the focused pane
 
 # Navigate-mode movement. These local shortcuts win while navigate mode is open.
 # They are independent from focus_pane_*. Do not include prefix+, esc, enter, tab, or 1..9 here.

@@ -356,8 +356,7 @@ impl App {
                 .get(ws_idx)?
                 .tabs
                 .get(tab_idx)?
-                .layout
-                .focused();
+                .focused_pane();
             self.launch_cwd_for_pane_in_workspace(ws_idx, pane_id)
         });
         self.resolve_new_terminal_cwd(

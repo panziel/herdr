@@ -36,9 +36,8 @@ impl ClientShellState {
     pub(super) fn update_pane_hover(&mut self, mouse: MouseEvent, outcome: &mut ClientShellInput) {
         let hovered = (mouse.kind == MouseEventKind::Moved && self.pane_hover_allowed())
             .then(|| {
-                self.hits.panes.iter().find(|hit| {
+                self.pane_hit_at((mouse.column, mouse.row)).filter(|hit| {
                     !hit.popup
-                        && contains(hit.rect, (mouse.column, mouse.row))
                         && self.snapshot.as_ref().is_some_and(|snapshot| {
                             snapshot.focused_pane_id.as_deref() != Some(hit.pane_id.as_str())
                         })
@@ -60,7 +59,7 @@ impl ClientShellState {
         let Some(hovered) = self.hovered_pane_id.as_deref() else {
             return;
         };
-        let Some(hit) = self.hits.panes.iter().find(|hit| {
+        let Some(index) = self.hits.panes.iter().position(|hit| {
             hit.pane_id == hovered
                 && self.snapshot.as_ref().is_some_and(|snapshot| {
                     snapshot.focused_pane_id.as_deref() != Some(hit.pane_id.as_str())
@@ -68,12 +67,19 @@ impl ClientShellState {
         }) else {
             return;
         };
+        let hit = &self.hits.panes[index];
+        // Hits are topmost first; floating panes listed earlier cover this border.
+        let covering: Vec<Rect> = self.hits.panes[..index]
+            .iter()
+            .map(|hit| hit.rect)
+            .collect();
         let muted = crate::protocol::color_to_u32(self.config.palette.overlay0);
         let hover = crate::protocol::color_to_u32(self.config.palette.hover_border_color());
         let mut highlight = |x: u16, y: u16| {
             if x >= frame.width
                 || y >= frame.height
                 || contains(hit.inner_rect, (x, y))
+                || covering.iter().any(|rect| contains(*rect, (x, y)))
                 || hit
                     .scrollbar_rect
                     .is_some_and(|rect| contains(rect, (x, y)))

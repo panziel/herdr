@@ -957,10 +957,8 @@ impl ClientShellState {
                 .contains(crossterm::event::KeyModifiers::CONTROL)
         {
             if let Some(hit) = self
-                .hits
-                .panes
-                .iter()
-                .find(|hit| super::contains(hit.inner_rect, point))
+                .pane_hit_at(point)
+                .filter(|hit| super::contains(hit.inner_rect, point))
                 .cloned()
             {
                 let viewport_row = mouse.row.saturating_sub(hit.inner_rect.y);
@@ -1206,15 +1204,16 @@ impl ClientShellState {
                     outcome.repaint = true;
                     return;
                 }
+                Some(ClientChromeDrag::FloatingPane(_)) => {
+                    self.drag_floating_pane(point, false, outcome);
+                    return;
+                }
                 Some(ClientChromeDrag::PaneMove { source_pane_id, .. }) => {
+                    // Panes swap inside the split tree, so floating panes are never targets.
                     let target_pane_id = self
-                        .hits
-                        .panes
-                        .iter()
-                        .find(|hit| {
-                            !hit.popup
-                                && super::contains(hit.rect, point)
-                                && hit.pane_id != *source_pane_id
+                        .pane_hit_at(point)
+                        .filter(|hit| {
+                            !hit.popup && hit.floating.is_none() && hit.pane_id != *source_pane_id
                         })
                         .map(|hit| hit.pane_id.clone());
                     if let Some(ClientChromeDrag::PaneMove {
@@ -1401,6 +1400,11 @@ impl ClientShellState {
                     }
                     ClientChromeDrag::SidebarWidth | ClientChromeDrag::SidebarSection => {
                         self.persist_chrome_preferences(outcome);
+                    }
+                    drag @ ClientChromeDrag::FloatingPane(_) => {
+                        self.chrome_drag = Some(drag);
+                        self.drag_floating_pane(point, true, outcome);
+                        self.chrome_drag = None;
                     }
                     ClientChromeDrag::WorkspaceScrollbar { .. }
                     | ClientChromeDrag::AgentScrollbar { .. }
@@ -1828,10 +1832,8 @@ impl ClientShellState {
         match mouse.kind {
             MouseEventKind::Down(MouseButton::Right) => {
                 let pane_hit = self
-                    .hits
-                    .panes
-                    .iter()
-                    .find(|hit| super::contains(hit.inner_rect, point))
+                    .pane_hit_at(point)
+                    .filter(|hit| super::contains(hit.inner_rect, point))
                     .cloned();
                 if let Some(hit) = pane_hit {
                     let pane_owns_right_click = self
@@ -1898,12 +1900,7 @@ impl ClientShellState {
                     outcome.repaint = true;
                     return;
                 }
-                let pane_id = self
-                    .hits
-                    .panes
-                    .iter()
-                    .find(|hit| super::contains(hit.rect, point))
-                    .map(|hit| hit.pane_id.clone());
+                let pane_id = self.pane_hit_at(point).map(|hit| hit.pane_id.clone());
                 if let Some(pane_id) = pane_id {
                     self.open_pane_context_menu(pane_id, mouse.column, mouse.row);
                     outcome.repaint = true;
@@ -2203,6 +2200,7 @@ impl ClientShellState {
                     );
                     return;
                 }
+                let top_pane = self.pane_hit_at(point).cloned();
                 let scrollbar_hit = self
                     .hits
                     .panes
@@ -2213,6 +2211,9 @@ impl ClientShellState {
                             && hit
                                 .scroll
                                 .is_some_and(|metrics| metrics.max_offset_from_bottom > 0)
+                            && top_pane
+                                .as_ref()
+                                .is_none_or(|top| top.pane_id == hit.pane_id)
                     })
                     .cloned();
                 if let Some(hit) = scrollbar_hit {
@@ -2246,6 +2247,7 @@ impl ClientShellState {
                     .pane_splits
                     .iter()
                     .find(|hit| super::contains(hit.hit_rect, point))
+                    .filter(|_| top_pane.as_ref().is_none_or(|top| top.floating.is_none()))
                     .cloned();
                 if let Some(hit) = split_hit {
                     let Some(tab_id) = self
@@ -2268,13 +2270,10 @@ impl ClientShellState {
                     });
                     return;
                 }
-                let pane_hit = self
-                    .hits
-                    .panes
-                    .iter()
-                    .find(|hit| super::contains(hit.rect, point))
-                    .cloned();
-                if let Some(hit) = pane_hit {
+                if let Some(hit) = top_pane {
+                    if self.press_floating_border(&hit, point, outcome) {
+                        return;
+                    }
                     if !super::contains(hit.inner_rect, point) {
                         self.chrome_drag = Some(ClientChromeDrag::PaneMove {
                             source_pane_id: hit.pane_id.clone(),
@@ -2337,10 +2336,8 @@ impl ClientShellState {
             }
             MouseEventKind::Down(MouseButton::Middle) => {
                 if let Some(hit) = self
-                    .hits
-                    .panes
-                    .iter()
-                    .find(|hit| super::contains(hit.inner_rect, point) && hit.mouse_reporting)
+                    .pane_hit_at(point)
+                    .filter(|hit| super::contains(hit.inner_rect, point) && hit.mouse_reporting)
                     .cloned()
                 {
                     self.push_pane_mouse_event(&hit, mouse, mouse.modifiers, outcome);
@@ -2357,10 +2354,8 @@ impl ClientShellState {
             | MouseEventKind::Drag(MouseButton::Left | MouseButton::Middle) => {}
             MouseEventKind::Moved => {
                 if let Some(hit) = self
-                    .hits
-                    .panes
-                    .iter()
-                    .find(|hit| super::contains(hit.inner_rect, point) && hit.mouse_reporting)
+                    .pane_hit_at(point)
+                    .filter(|hit| super::contains(hit.inner_rect, point) && hit.mouse_reporting)
                     .cloned()
                 {
                     self.push_pane_mouse_event(&hit, mouse, mouse.modifiers, outcome);
@@ -2371,10 +2366,8 @@ impl ClientShellState {
             | MouseEventKind::ScrollLeft
             | MouseEventKind::ScrollRight => {
                 if let Some(hit) = self
-                    .hits
-                    .panes
-                    .iter()
-                    .find(|hit| super::contains(hit.inner_rect, point))
+                    .pane_hit_at(point)
+                    .filter(|hit| super::contains(hit.inner_rect, point))
                     .cloned()
                 {
                     if self.focused_pane_id().as_deref() != Some(hit.pane_id.as_str()) {

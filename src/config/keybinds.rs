@@ -403,6 +403,10 @@ pub struct Keybinds {
     pub resize_pane_up: ActionKeybinds,
     pub resize_pane_right: ActionKeybinds,
     pub toggle_sidebar: ActionKeybinds,
+    pub toggle_floating: ActionKeybinds,
+    pub new_floating_pane: ActionKeybinds,
+    pub toggle_floating_pin: ActionKeybinds,
+    pub toggle_pane_floating: ActionKeybinds,
     pub custom_commands: Vec<CustomCommandKeybind>,
 }
 
@@ -586,6 +590,10 @@ impl Config {
             resize_pane_up: empty_action!(),
             resize_pane_right: empty_action!(),
             toggle_sidebar: empty_action!(),
+            toggle_floating: empty_action!(),
+            new_floating_pane: empty_action!(),
+            toggle_floating_pin: empty_action!(),
+            toggle_pane_floating: empty_action!(),
             custom_commands: Vec::new(),
         };
 
@@ -734,6 +742,10 @@ impl Config {
             apply_action!(keybinds.resize_pane_up, resize_pane_up, source);
             apply_action!(keybinds.resize_pane_right, resize_pane_right, source);
             apply_action!(keybinds.toggle_sidebar, toggle_sidebar, source);
+            apply_action!(keybinds.toggle_floating, toggle_floating, source);
+            apply_action!(keybinds.new_floating_pane, new_floating_pane, source);
+            apply_action!(keybinds.toggle_floating_pin, toggle_floating_pin, source);
+            apply_action!(keybinds.toggle_pane_floating, toggle_pane_floating, source);
 
             if source == field_source!(indexed) {
                 append_legacy_indexed_bindings(

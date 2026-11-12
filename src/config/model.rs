@@ -455,6 +455,14 @@ pub struct KeysConfig {
     pub resize_pane_right: BindingConfig,
     /// Toggle sidebar collapse. Default: "prefix+b"
     pub toggle_sidebar: BindingConfig,
+    /// Show or hide the floating panes of the tab; opens one when there are none. Default: "prefix+f"
+    pub toggle_floating: BindingConfig,
+    /// Open a new floating pane. Default: "prefix+shift+f"
+    pub new_floating_pane: BindingConfig,
+    /// Pin or unpin the focused floating pane. Default: "prefix+i"
+    pub toggle_floating_pin: BindingConfig,
+    /// Float the focused pane or embed a floating pane back into the layout. Unset by default.
+    pub toggle_pane_floating: BindingConfig,
     /// Optional indexed shortcuts expanded over number keys 1-9.
     pub indexed: IndexedKeysConfig,
     /// Prefix-mode custom command bindings.
@@ -592,6 +600,14 @@ pub(crate) struct KeysConfigOverlay {
     #[serde(skip_serializing_if = "Option::is_none")]
     toggle_sidebar: Option<BindingConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    toggle_floating: Option<BindingConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    new_floating_pane: Option<BindingConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    toggle_floating_pin: Option<BindingConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    toggle_pane_floating: Option<BindingConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     indexed: Option<IndexedKeysConfig>,
     #[serde(skip_serializing)]
     command: Option<Vec<CommandKeybindConfig>>,
@@ -703,6 +719,10 @@ impl<'de> Deserialize<'de> for KeysConfig {
         apply_field!(resize_pane_up);
         apply_field!(resize_pane_right);
         apply_field!(toggle_sidebar);
+        apply_field!(toggle_floating);
+        apply_field!(new_floating_pane);
+        apply_field!(toggle_floating_pin);
+        apply_field!(toggle_pane_floating);
         apply_field!(indexed);
         apply_field!(command);
 
@@ -808,6 +828,10 @@ impl KeysConfig {
         copy_effective_action_field!(resize_pane_up, keybinds.resize_pane_up);
         copy_effective_action_field!(resize_pane_right, keybinds.resize_pane_right);
         copy_effective_action_field!(toggle_sidebar, keybinds.toggle_sidebar);
+        copy_effective_action_field!(toggle_floating, keybinds.toggle_floating);
+        copy_effective_action_field!(new_floating_pane, keybinds.new_floating_pane);
+        copy_effective_action_field!(toggle_floating_pin, keybinds.toggle_floating_pin);
+        copy_effective_action_field!(toggle_pane_floating, keybinds.toggle_pane_floating);
         copy_user_field!(indexed);
 
         profile
@@ -1180,6 +1204,10 @@ impl Default for KeysConfig {
             resize_pane_up: BindingConfig::empty(),
             resize_pane_right: BindingConfig::empty(),
             toggle_sidebar: BindingConfig::one("prefix+b"),
+            toggle_floating: BindingConfig::one("prefix+f"),
+            new_floating_pane: BindingConfig::one("prefix+shift+f"),
+            toggle_floating_pin: BindingConfig::one("prefix+i"),
+            toggle_pane_floating: BindingConfig::empty(),
             indexed: IndexedKeysConfig::default(),
             command: Vec::new(),
             user_fields: BTreeSet::new(),

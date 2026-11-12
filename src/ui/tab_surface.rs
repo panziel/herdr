@@ -144,14 +144,46 @@ pub(crate) fn tab_surface_hyperlinks(
         return Vec::new();
     }
 
+    let floating = floating_infos(app, surface);
     let mut links = Vec::new();
-    for info in surface.pane_infos {
+    for (index, info) in surface.pane_infos.iter().enumerate() {
         if let Some(runtime) = app.runtime_for_pane_in_workspace(terminal_runtimes, ws_idx, info.id)
         {
-            links.extend(runtime.visible_hyperlinks(info.inner_rect));
+            let covering = covering_floating(surface.pane_infos, floating, index);
+            links.extend(
+                runtime
+                    .visible_hyperlinks(info.inner_rect)
+                    .into_iter()
+                    .filter(|(position, _, _)| !covered_by(covering, *position)),
+            );
         }
     }
     links
+}
+
+/// Start index of the framed floating panes in the surface's draw-ordered infos.
+fn floating_infos(app: &AppState, surface: TabSurfaceView<'_>) -> usize {
+    let tab = surface.target.and_then(|target| {
+        app.workspaces
+            .get(target.workspace_index)?
+            .tabs
+            .get(target.tab_index)
+    });
+    super::panes::floating_info_start(tab, surface.pane_infos)
+}
+
+/// Floating panes painted after the pane at `index`. Tiled panes never
+/// overlap, so only floating panes can cover a cell.
+fn covering_floating(pane_infos: &[PaneInfo], floating_start: usize, index: usize) -> &[PaneInfo] {
+    &pane_infos[floating_start.max(index + 1).min(pane_infos.len())..]
+}
+
+/// Whether a cell is drawn over by one of `covering`, the panes painted after
+/// the pane that owns the cell.
+fn covered_by(covering: &[PaneInfo], (x, y): (u16, u16)) -> bool {
+    covering.iter().any(|info| {
+        x >= info.rect.x && x < info.rect.right() && y >= info.rect.y && y < info.rect.bottom()
+    })
 }
 
 pub(crate) fn tab_surface_cursor(
@@ -160,7 +192,9 @@ pub(crate) fn tab_surface_cursor(
     surface: TabSurfaceView<'_>,
 ) -> Option<CursorState> {
     let ws_idx = surface.target?.workspace_index;
-    let info = surface.pane_infos.iter().find(|info| info.is_focused)?;
+    let index = surface.pane_infos.iter().position(|info| info.is_focused)?;
+    let info = &surface.pane_infos[index];
+    let covering = covering_floating(surface.pane_infos, floating_infos(app, surface), index);
     if !app.pane_exposes_host_cursor(ws_idx, info.id) {
         return None;
     }
@@ -181,11 +215,12 @@ pub(crate) fn tab_surface_cursor(
         });
 
     if let Some(cursor) = runtime.cursor_state(info.inner_rect, true) {
-        let visible = if reveal {
-            !scrolled_back
-        } else {
-            cursor.visible && !scrolled_back
-        };
+        let visible = !covered_by(covering, (cursor.x, cursor.y))
+            && if reveal {
+                !scrolled_back
+            } else {
+                cursor.visible && !scrolled_back
+            };
         Some(CursorState {
             x: cursor.x,
             y: cursor.y,

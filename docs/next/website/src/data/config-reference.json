@@ -860,6 +860,30 @@
           "description": "Toggle sidebar collapse."
         },
         {
+          "key": "keys.toggle_floating",
+          "type": "keybinding",
+          "default": "\"prefix+f\"",
+          "description": "Show or hide the floating panes of the tab; opens one when there are none."
+        },
+        {
+          "key": "keys.new_floating_pane",
+          "type": "keybinding",
+          "default": "\"prefix+shift+f\"",
+          "description": "Open a new floating pane."
+        },
+        {
+          "key": "keys.toggle_floating_pin",
+          "type": "keybinding",
+          "default": "\"prefix+i\"",
+          "description": "Pin or unpin the focused floating pane. Pinned floating panes stay on top while the floating layer is hidden."
+        },
+        {
+          "key": "keys.toggle_pane_floating",
+          "type": "keybinding",
+          "default": "unset",
+          "description": "Float the focused pane or embed a floating pane back into the layout. Unset by default."
+        },
+        {
           "key": "keys.indexed.tabs",
           "type": "string",
           "default": "unset",

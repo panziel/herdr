@@ -75,7 +75,7 @@ impl App {
                 .get(tab_index)
         });
         let terminal = tab
-            .and_then(|tab| tab.terminal_id(tab.layout.focused()))
+            .and_then(|tab| tab.terminal_id(tab.focused_pane()))
             .and_then(|terminal_id| self.state.terminals.get(terminal_id));
 
         let mut title = String::new();

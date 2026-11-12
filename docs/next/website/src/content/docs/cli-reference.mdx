@@ -196,6 +196,7 @@ herdr tab get <tab_id>
 herdr tab focus <tab_id>
 herdr tab rename <tab_id> <label>
 herdr tab close <tab_id>
+herdr tab floating [--tab ID] [--toggle|--show|--hide] [--create]
 ```
 
 A tab is another terminal layout inside a workspace. Without `--workspace`, `tab create` uses the active workspace and fails if none exists. Its JSON response exposes `.result.tab.tab_id` and `.result.root_pane.pane_id`. Closing a workspace's last tab also closes the workspace, matching the TUI close-tab action. If `confirm_close` is enabled and closing the tab would also close a whole worktree group, `tab close` returns a `confirmation_required` error instead.
@@ -217,6 +218,10 @@ herdr pane edges [--pane ID|--current]
 herdr pane focus --direction left|right|up|down [--pane ID|--current]
 herdr pane resize --direction left|right|up|down [--amount FLOAT] [--pane ID|--current]
 herdr pane zoom [<pane_id>|--pane ID|--current] [--toggle|--on|--off]
+herdr pane float [<pane_id>|--pane ID|--current] [--toggle|--on|--off]
+herdr pane pin [<pane_id>|--pane ID|--current] [--toggle|--on|--off]
+herdr pane new-floating [--tab ID] [--cwd PATH] [--env KEY=VALUE] [--focus|--no-focus]
+herdr pane float-move --direction left|right|up|down [--cells N] [--pane ID|--current]
 herdr pane rename <pane_id> <label>|--clear
 herdr pane input [<pane_id>|--pane ID|--current] --right-click herdr|pane
 herdr pane split [<pane_id>|--pane ID|--current] --direction right|down [--ratio FLOAT] [--cwd PATH] [--env KEY=VALUE] [--right-click herdr|pane] [--focus] [--no-focus]
@@ -227,6 +232,8 @@ herdr pane move <pane_id> --new-tab [--workspace ID] [--label TEXT] [--focus|--n
 herdr pane move <pane_id> --new-workspace [--label TEXT] [--tab-label TEXT] [--focus|--no-focus]
 herdr pane close <pane_id>
 ```
+
+`pane float` turns a tiled pane into a floating pane or, with `--off`, puts a floating pane back into the split layout; the last tiled pane of a tab cannot float. `pane pin` keeps a floating pane on top while its tab's floating layer is hidden and fails with `pane_not_floating` for tiled panes. `pane new-floating` opens a shell in a new floating pane of the active tab or `--tab`. `pane float-move` moves a floating pane by `--cells` (default 4 columns or 2 rows); `pane resize` resizes a floating pane by moving its right or bottom edge. `tab floating` shows or hides a tab's floating layer; with `--create`, showing an empty layer opens a floating pane. Floating panes report their pin state, visibility, and geometry in thousandths of the tab area under `.floating` in pane JSON.
 
 For pane commands that accept `--current`, Herdr uses the calling pane's
 `HERDR_PANE_ID` when the command runs inside a Herdr pane. For `pane split`,

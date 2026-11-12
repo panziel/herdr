@@ -98,8 +98,8 @@ herdr pane read w1:p2 --source recent --lines 50
 | 会话 | `session.snapshot` |
 | 工作区 | `workspace.create`、`workspace.list`、`workspace.get`、`workspace.focus`、`workspace.rename`、`workspace.move`、`workspace.move_block`、`workspace.report_metadata`、`workspace.close` |
 | Worktree | `worktree.list`、`worktree.create`、`worktree.open`、`worktree.remove` |
-| 标签页 | `tab.create`、`tab.list`、`tab.get`、`tab.focus`、`tab.rename`、`tab.move`、`tab.close` |
-| 窗格 | `pane.split`、`pane.swap`、`pane.move`、`pane.zoom`、`pane.layout`、`pane.process_info`、`pane.neighbor`、`pane.edges`、`pane.focus_direction`、`pane.resize`、`pane.list`、`pane.current`、`pane.get`、`pane.rename`、`pane.send_text`、`pane.send_keys`、`pane.send_input`、`pane.read`、`pane.report_agent`、`pane.report_agent_session`、`pane.report_metadata`、`pane.clear_agent_authority`、`pane.release_agent`、`pane.close`、`pane.wait_for_output` |
+| 标签页 | `tab.create`、`tab.list`、`tab.get`、`tab.focus`、`tab.rename`、`tab.move`、`tab.close`、`tab.floating.set` |
+| 窗格 | `pane.split`、`pane.swap`、`pane.move`、`pane.zoom`、`pane.floating.create`、`pane.floating.set`、`pane.pin`、`pane.floating.move`、`pane.floating.geometry`、`pane.layout`、`pane.process_info`、`pane.neighbor`、`pane.edges`、`pane.focus_direction`、`pane.resize`、`pane.list`、`pane.current`、`pane.get`、`pane.rename`、`pane.send_text`、`pane.send_keys`、`pane.send_input`、`pane.read`、`pane.report_agent`、`pane.report_agent_session`、`pane.report_metadata`、`pane.clear_agent_authority`、`pane.release_agent`、`pane.close`、`pane.wait_for_output` |
 | 弹窗 | `popup.close` |
 | 布局 | `layout.export`、`layout.apply`、`layout.set_split_ratio` |
 | 智能体 | `agent.list`、`agent.get`、`agent.read`、`agent.explain`、`agent.send_keys`、`agent.prompt`、`agent.wait`、`agent.rename`、`agent.focus`、`agent.start` |
@@ -234,6 +234,20 @@ CLI 的 `herdr api snapshot` 会把当前 `session.snapshot` 响应输出为 JSO
 ```
 
 省略 `pane_id` 时,目标是服务器当前聚焦的活动窗格。响应是 `type: "pane_zoom"`,带 `changed`、`zoom_changed`、`focus_changed`、可选的 `reason`、`pane_id`、`focused_pane_id`、`zoomed` 和 `layout`。缩放状态或焦点任一发生变化时,`changed` 为 true。reason 的取值有 `single_pane`、`already_zoomed` 和 `already_unzoomed`。
+
+浮动窗格位于标签页拆分布局之上。`tab.floating.set` 显示、隐藏或切换标签页的浮动层，
+返回 `type: "tab_floating"`，包含 `changed`、`visible`、`focused_pane_id`；当
+`create_if_empty` 新建了第一个浮动窗格时还包含 `created_pane`。`pane.floating.create`、
+`pane.floating.set`、`pane.pin`、`pane.floating.move` 和 `pane.floating.geometry`
+返回 `type: "pane_info"`。浮动窗格带有 `floating` 对象，包含 `pinned`、`visible`，
+以及以标签页区域千分比表示的 `geometry`：
+
+```json
+{"id":"req_layer","method":"tab.floating.set","params":{"tab_id":"w1:t1","mode":"toggle","create_if_empty":true}}
+{"id":"req_float","method":"pane.floating.set","params":{"pane_id":"w1:p2","mode":"on"}}
+{"id":"req_pin","method":"pane.pin","params":{"pane_id":"w1:p2","mode":"toggle"}}
+{"id":"req_geometry","method":"pane.floating.geometry","params":{"pane_id":"w1:p2","geometry":{"x":100,"y":100,"width":500,"height":400}}}
+```
 
 `notification.show` 的 CLI 包装是:
 

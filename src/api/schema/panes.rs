@@ -530,6 +530,8 @@ pub struct PaneInfo {
     pub agent_session: Option<AgentSessionInfo>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scroll: Option<PaneScrollInfo>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub floating: Option<super::floating::PaneFloatingInfo>,
     pub revision: u64,
 }
 

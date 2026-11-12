@@ -94,6 +94,23 @@ pub struct TabSnapshot {
     pub focused: Option<u32>,
     #[serde(default)]
     pub root_pane: Option<u32>,
+    /// Floating panes from bottom to top. Their pane entries live in `panes`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub floating: Vec<FloatingPaneSnapshot>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub floating_visible: bool,
+}
+
+/// Saved floating pane geometry in thousandths of the tab area.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FloatingPaneSnapshot {
+    pub pane: u32,
+    pub x: u16,
+    pub y: u16,
+    pub width: u16,
+    pub height: u16,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pinned: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -162,6 +179,8 @@ impl From<LegacyWorkspaceSnapshot> for WorkspaceSnapshot {
             zoomed: snap.zoomed,
             focused: snap.focused,
             root_pane: snap.root_pane,
+            floating: Vec::new(),
+            floating_visible: false,
         };
 
         Self {
@@ -398,6 +417,20 @@ fn capture_tab(
         zoomed: tab.zoomed,
         focused: Some(tab.layout.focused().raw()),
         root_pane: Some(tab.root_pane.raw()),
+        floating: tab
+            .floating
+            .panes()
+            .iter()
+            .map(|pane| FloatingPaneSnapshot {
+                pane: pane.id.raw(),
+                x: pane.rect.x,
+                y: pane.rect.y,
+                width: pane.rect.width,
+                height: pane.rect.height,
+                pinned: pane.pinned,
+            })
+            .collect(),
+        floating_visible: tab.floating.is_visible(),
     }
 }
 
@@ -744,6 +777,8 @@ mod tests {
                     zoomed: false,
                     focused: Some(0),
                     root_pane: Some(0),
+                    floating: Vec::new(),
+                    floating_visible: false,
                 }],
                 active_tab: 0,
             }],
@@ -1445,6 +1480,8 @@ mod tests {
                     zoomed: false,
                     focused: Some(0),
                     root_pane: Some(0),
+                    floating: Vec::new(),
+                    floating_visible: false,
                 }],
                 active_tab: 0,
             }],

@@ -2,6 +2,10 @@ use std::collections::HashMap;
 
 use clap::{ArgMatches, Command};
 
+use crate::api::schema::floating::{
+    PaneFloatingCreateProjection, PaneFloatingMoveProjection, PaneFloatingSetProjection,
+    PanePinProjection,
+};
 use crate::api::schema::panes::*;
 use crate::api::schema::{
     Method, OutputMatch, PaneAgentState, PaneDirection, PaneTarget, PaneWaitForOutputParams,
@@ -570,6 +574,38 @@ pub(super) const LEAVES: &[Leaf] = &[
         Json,
         PaneZoomProjection,
         PaneZoom
+    ),
+    leaf!(
+        "float",
+        "Float a pane above the tab or embed it back",
+        "cli:pane:float",
+        Json,
+        PaneFloatingSetProjection,
+        PaneFloatingSet
+    ),
+    leaf!(
+        "pin",
+        "Keep a floating pane on top while the floating layer is hidden",
+        "cli:pane:pin",
+        Json,
+        PanePinProjection,
+        PanePin
+    ),
+    leaf!(
+        "new-floating",
+        "Open a shell in a new floating pane",
+        "cli:pane:new-floating",
+        Json,
+        PaneFloatingCreateProjection,
+        PaneFloatingCreate
+    ),
+    leaf!(
+        "float-move",
+        "Move a floating pane",
+        "cli:pane:float-move",
+        Json,
+        PaneFloatingMoveProjection,
+        PaneFloatingMove
     ),
     Leaf {
         name: "read",

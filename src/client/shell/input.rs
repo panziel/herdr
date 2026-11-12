@@ -1055,7 +1055,25 @@ impl ClientShellState {
             return;
         }
 
+        let shifted = key
+            .modifiers
+            .contains(crossterm::event::KeyModifiers::SHIFT);
         let action = match key.code {
+            // Shift moves a floating pane instead of resizing it.
+            KeyCode::Char('H') => Some(crate::input::KeybindAction::MoveFloatingPaneLeft),
+            KeyCode::Char('J') => Some(crate::input::KeybindAction::MoveFloatingPaneDown),
+            KeyCode::Char('K') => Some(crate::input::KeybindAction::MoveFloatingPaneUp),
+            KeyCode::Char('L') => Some(crate::input::KeybindAction::MoveFloatingPaneRight),
+            KeyCode::Char('h') if shifted => {
+                Some(crate::input::KeybindAction::MoveFloatingPaneLeft)
+            }
+            KeyCode::Char('j') if shifted => {
+                Some(crate::input::KeybindAction::MoveFloatingPaneDown)
+            }
+            KeyCode::Char('k') if shifted => Some(crate::input::KeybindAction::MoveFloatingPaneUp),
+            KeyCode::Char('l') if shifted => {
+                Some(crate::input::KeybindAction::MoveFloatingPaneRight)
+            }
             KeyCode::Char('h') | KeyCode::Left => Some(crate::input::KeybindAction::ResizePaneLeft),
             KeyCode::Char('j') | KeyCode::Down => Some(crate::input::KeybindAction::ResizePaneDown),
             KeyCode::Char('k') | KeyCode::Up => Some(crate::input::KeybindAction::ResizePaneUp),
@@ -1089,6 +1107,23 @@ impl ClientShellState {
         self.snapshot
             .as_deref()
             .and_then(|snapshot| snapshot.focused_pane_id.clone())
+    }
+
+    /// Floating state of `pane_id` from the endpoint snapshot.
+    pub(super) fn floating_pane(
+        &self,
+        pane_id: &str,
+    ) -> Option<crate::protocol::ClientShellFloatingPane> {
+        self.snapshot
+            .as_deref()?
+            .panes
+            .iter()
+            .find(|pane| pane.pane_id == pane_id)?
+            .floating
+    }
+
+    pub(super) fn pane_is_floating(&self, pane_id: &str) -> bool {
+        self.floating_pane(pane_id).is_some()
     }
 
     pub(crate) fn clipboard_image_target(

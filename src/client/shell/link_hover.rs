@@ -86,11 +86,10 @@ impl ClientShellState {
             outcome.repaint |= self.clear_link_hover();
             return;
         }
+        let point = (mouse.column, mouse.row);
         let Some(hit) = self
-            .hits
-            .panes
-            .iter()
-            .find(|hit| contains(hit.inner_rect, (mouse.column, mouse.row)))
+            .pane_hit_at(point)
+            .filter(|hit| contains(hit.inner_rect, point))
         else {
             outcome.repaint |= self.clear_link_hover();
             return;

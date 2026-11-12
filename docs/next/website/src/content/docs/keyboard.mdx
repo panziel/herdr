@@ -40,6 +40,9 @@ Panes:
 | Swap panes | `prefix+shift+h/j/k/l` |
 | Resize mode | `prefix+r` |
 | Copy mode | `prefix+[` |
+| Show / hide floating panes | `prefix+f` |
+| New floating pane | `prefix+shift+f` |
+| Pin the focused floating pane | `prefix+i` |
 
 Tabs:
 
@@ -87,6 +90,14 @@ Herdr's naming dialogs, worktree branch fields, filters, and copy-mode search su
 | Insert the last cut text | Ctrl+Y |
 
 Typing and paste insert at the cursor. Movement and deletion respect Unicode grapheme boundaries, and long values scroll horizontally. Cut text stays within the current field; it does not use the system clipboard. Alt shortcuts require the terminal to report Alt/Meta. Enter and Esc retain the dialog's confirm and cancel behavior.
+
+## Floating panes
+
+Each tab has a layer of floating panes drawn above its tiled panes. `prefix+f` shows or hides the layer and opens a floating pane when the tab has none. While the layer is shown, keyboard input goes to the top floating pane; the tiled panes underneath keep running and stay clickable.
+
+Focusing a tiled pane, by clicking it or moving focus with the keyboard, hides the layer. Pinned floating panes stay on top while the layer is hidden. Pin or unpin a floating pane with `prefix+i` or by clicking `pin [ ]` at the right end of its top border. Switching tabs keeps each tab's layer as you left it.
+
+Drag a floating pane's top border to move it, and drag its left, right, or bottom border to resize it. In resize mode (`prefix+r`), `h/j/k/l` resizes the focused floating pane and `H/J/K/L` moves it. `prefix+z` zooms the focused floating pane to fill the tab. Splitting a floating pane opens another floating pane. The optional `toggle_pane_floating` binding floats the focused tiled pane or puts a floating pane back into the split layout. Closing the last tiled pane of a tab moves the top floating pane into the split layout. The pane right-click menu can also open a new floating pane, make a pane floating, embed it back, and pin or unpin it. Make pane floating is not offered for the only tiled pane of a tab.
 
 ## Copy mode
 

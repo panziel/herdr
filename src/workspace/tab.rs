@@ -11,6 +11,8 @@ use crate::pane::{PaneLaunchEnv, PaneState};
 use crate::render_signal::RenderSignal;
 use crate::terminal::{TerminalId, TerminalRuntime, TerminalRuntimeRegistry, TerminalState};
 
+use super::floating::{FloatingLayer, FloatingPane};
+
 pub(crate) type DetachedPane = (PaneId, TerminalId);
 
 pub(crate) struct MovedPane {
@@ -46,6 +48,8 @@ pub struct Tab {
     #[cfg(test)]
     pub runtimes: HashMap<PaneId, TerminalRuntime>,
     pub zoomed: bool,
+    /// Panes drawn above `layout`. Their ids live in `panes` but not in `layout`.
+    pub floating: FloatingLayer,
     pub events: mpsc::Sender<AppEvent>,
     pub(crate) render_notify: Arc<Notify>,
     pub(crate) render_dirty: Arc<RenderSignal>,
@@ -188,6 +192,7 @@ impl Tab {
                 #[cfg(test)]
                 runtimes: HashMap::new(),
                 zoomed: false,
+                floating: FloatingLayer::default(),
                 events,
                 render_notify,
                 render_dirty,
@@ -218,7 +223,7 @@ impl Tab {
         host_terminal_appearance: Option<crate::terminal_theme::HostAppearance>,
     ) -> std::io::Result<NewPane> {
         self.split_pane_with_runtime(
-            self.layout.focused(),
+            self.focused_pane(),
             true,
             direction,
             None,
@@ -326,6 +331,22 @@ impl Tab {
         launch_env: &PaneLaunchEnv,
         command: Option<SplitCommand<'_>>,
     ) -> std::io::Result<NewPane> {
+        // Floating panes have no split tree; splitting one opens a sibling
+        // floating pane, the same way zellij treats new panes in the floating layer.
+        if self.floating.contains(target) {
+            return self.spawn_floating_pane(
+                focus_new_pane,
+                rows,
+                cols,
+                cwd,
+                scrollback_limit_bytes,
+                host_terminal_theme,
+                host_terminal_appearance,
+                shell_config,
+                launch_env,
+                command,
+            );
+        }
         let Some(new_id) = self
             .layout
             .split_pane(target, direction, ratio.unwrap_or(0.5))
@@ -335,6 +356,127 @@ impl Tab {
                 "split target pane is not in the layout",
             ));
         };
+        let spawned = self.spawn_pane_terminal(
+            new_id,
+            rows,
+            cols,
+            cwd,
+            scrollback_limit_bytes,
+            host_terminal_theme,
+            host_terminal_appearance,
+            shell_config,
+            launch_env,
+            command,
+        );
+        let (terminal, runtime) = match spawned {
+            Ok(spawned) => spawned,
+            Err(err) => {
+                self.layout.close_pane(new_id);
+                return Err(err);
+            }
+        };
+        if focus_new_pane {
+            self.layout.focus_pane(new_id);
+            self.floating.hide();
+        }
+        self.panes
+            .insert(new_id, PaneState::new(terminal.id.clone()));
+        self.zoomed = false;
+        Ok(NewPane {
+            pane_id: new_id,
+            terminal,
+            runtime,
+        })
+    }
+
+    /// Open a shell in a new floating pane on top of this tab's floating layer.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn create_floating_pane_shell(
+        &mut self,
+        focus_new_pane: bool,
+        rows: u16,
+        cols: u16,
+        cwd: Option<PathBuf>,
+        scrollback_limit_bytes: usize,
+        host_terminal_theme: crate::terminal_theme::TerminalTheme,
+        host_terminal_appearance: Option<crate::terminal_theme::HostAppearance>,
+        shell_config: crate::pane::PaneShellConfig<'_>,
+        launch_env: &PaneLaunchEnv,
+    ) -> std::io::Result<NewPane> {
+        self.spawn_floating_pane(
+            focus_new_pane,
+            rows,
+            cols,
+            cwd,
+            scrollback_limit_bytes,
+            host_terminal_theme,
+            host_terminal_appearance,
+            shell_config,
+            launch_env,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn spawn_floating_pane(
+        &mut self,
+        focus_new_pane: bool,
+        rows: u16,
+        cols: u16,
+        cwd: Option<PathBuf>,
+        scrollback_limit_bytes: usize,
+        host_terminal_theme: crate::terminal_theme::TerminalTheme,
+        host_terminal_appearance: Option<crate::terminal_theme::HostAppearance>,
+        shell_config: crate::pane::PaneShellConfig<'_>,
+        launch_env: &PaneLaunchEnv,
+        command: Option<SplitCommand<'_>>,
+    ) -> std::io::Result<NewPane> {
+        let new_id = PaneId::alloc();
+        let (terminal, runtime) = self.spawn_pane_terminal(
+            new_id,
+            rows,
+            cols,
+            cwd,
+            scrollback_limit_bytes,
+            host_terminal_theme,
+            host_terminal_appearance,
+            shell_config,
+            launch_env,
+            command,
+        )?;
+        let rect = self.floating.next_rect();
+        self.floating.insert(
+            FloatingPane {
+                id: new_id,
+                rect,
+                pinned: false,
+            },
+            focus_new_pane,
+        );
+        self.panes
+            .insert(new_id, PaneState::new(terminal.id.clone()));
+        self.zoomed = false;
+        Ok(NewPane {
+            pane_id: new_id,
+            terminal,
+            runtime,
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn spawn_pane_terminal(
+        &self,
+        pane_id: PaneId,
+        rows: u16,
+        cols: u16,
+        cwd: Option<PathBuf>,
+        scrollback_limit_bytes: usize,
+        host_terminal_theme: crate::terminal_theme::TerminalTheme,
+        host_terminal_appearance: Option<crate::terminal_theme::HostAppearance>,
+        shell_config: crate::pane::PaneShellConfig<'_>,
+        launch_env: &PaneLaunchEnv,
+        command: Option<SplitCommand<'_>>,
+    ) -> std::io::Result<(TerminalState, TerminalRuntime)> {
         let actual_cwd =
             cwd.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| "/".into()));
         let launch_argv = if let Some(SplitCommand::Argv { argv, .. }) = &command {
@@ -347,7 +489,7 @@ impl Tab {
                 command,
                 launch_env,
             }) => TerminalRuntime::spawn_shell_command(
-                new_id,
+                pane_id,
                 rows,
                 cols,
                 actual_cwd.clone(),
@@ -362,7 +504,7 @@ impl Tab {
                 self.render_dirty.clone(),
             ),
             Some(SplitCommand::Argv { argv, launch_env }) => TerminalRuntime::spawn_argv_command(
-                new_id,
+                pane_id,
                 rows,
                 cols,
                 actual_cwd.clone(),
@@ -377,7 +519,7 @@ impl Tab {
                 self.render_dirty.clone(),
             ),
             None => TerminalRuntime::spawn(
-                new_id,
+                pane_id,
                 rows,
                 cols,
                 actual_cwd.clone(),
@@ -390,36 +532,18 @@ impl Tab {
                 self.render_notify.clone(),
                 self.render_dirty.clone(),
             ),
-        };
-        let runtime = match runtime {
-            Ok(runtime) => runtime,
-            Err(err) => {
-                self.layout.close_pane(new_id);
-                return Err(err);
-            }
-        };
+        }?;
         let terminal_id = TerminalId::alloc();
         let terminal = match launch_argv {
-            Some(argv) => {
-                TerminalState::new(terminal_id.clone(), actual_cwd).with_launch_argv(argv)
-            }
-            None => TerminalState::new(terminal_id.clone(), actual_cwd),
+            Some(argv) => TerminalState::new(terminal_id, actual_cwd).with_launch_argv(argv),
+            None => TerminalState::new(terminal_id, actual_cwd),
         };
-        if focus_new_pane {
-            self.layout.focus_pane(new_id);
-        }
-        self.panes.insert(new_id, PaneState::new(terminal_id));
-        self.zoomed = false;
-        Ok(NewPane {
-            pane_id: new_id,
-            terminal,
-            runtime,
-        })
+        Ok((terminal, runtime))
     }
 
     #[cfg(test)]
     pub fn close_focused(&mut self) -> Option<DetachedPane> {
-        let pane_id = self.layout.focused();
+        let pane_id = self.focused_pane();
         self.detach_pane(pane_id)
     }
 
@@ -451,6 +575,7 @@ impl Tab {
             #[cfg(test)]
             runtimes: HashMap::new(),
             zoomed: false,
+            floating: FloatingLayer::default(),
             events,
             render_notify,
             render_dirty,
@@ -461,13 +586,9 @@ impl Tab {
         if !self.panes.contains_key(&pane_id) {
             return None;
         }
-
-        if self.layout.pane_count() > 1 {
-            let next_root = self.promoted_root_if_needed(pane_id);
-            self.layout.close_pane(pane_id);
-            if let Some(next_root) = next_root {
-                self.root_pane = next_root;
-            }
+        // The last pane leaves with its whole tab; the caller drops the tab.
+        if self.pane_count() > 1 && !self.remove_from_structure(pane_id) {
+            return None;
         }
 
         let pane_state = self.panes.remove(&pane_id)?;
@@ -492,6 +613,9 @@ impl Tab {
         {
             return Err(moved);
         }
+        if focus {
+            self.floating.hide();
+        }
         let pane_id = moved.pane_id;
         self.panes.insert(pane_id, moved.pane_state);
         self.zoomed = false;
@@ -499,21 +623,44 @@ impl Tab {
     }
 
     fn detach_pane(&mut self, pane_id: PaneId) -> Option<DetachedPane> {
-        if self.layout.pane_count() <= 1 {
+        if self.pane_count() <= 1 || !self.remove_from_structure(pane_id) {
             return None;
         }
-
-        let next_root = self.promoted_root_if_needed(pane_id);
-
-        self.layout.close_pane(pane_id);
-
         let pane = self.panes.remove(&pane_id)?;
-        let terminal_id = pane.attached_terminal_id;
         self.zoomed = false;
-        if let Some(next_root) = next_root {
-            self.root_pane = next_root;
+        Some((pane_id, pane.attached_terminal_id))
+    }
+
+    /// Take `pane_id` out of the split tree or the floating layer while the
+    /// tab keeps at least one tiled pane. Closing the last tiled pane promotes
+    /// the top floating pane into the tiled layout instead of losing the tab.
+    fn remove_from_structure(&mut self, pane_id: PaneId) -> bool {
+        if self.floating.remove(pane_id).is_some() {
+            return true;
         }
-        Some((pane_id, terminal_id))
+        if !self.layout.pane_ids().contains(&pane_id) {
+            return false;
+        }
+        if self.layout.pane_count() > 1 {
+            let next_root = self.promoted_root_if_needed(pane_id);
+            self.layout.close_pane(pane_id);
+            if let Some(next_root) = next_root {
+                self.root_pane = next_root;
+            }
+            return true;
+        }
+        let Some(promoted) = self.floating.top().map(|pane| pane.id) else {
+            return false;
+        };
+        self.floating.remove(promoted);
+        self.layout = TileLayout::from_saved(Node::Pane(promoted), promoted);
+        self.root_pane = promoted;
+        tracing::info!(
+            closed = pane_id.raw(),
+            promoted = promoted.raw(),
+            "promoted floating pane after last tiled pane closed"
+        );
+        true
     }
 
     fn promoted_root_if_needed(&self, closing: PaneId) -> Option<PaneId> {
@@ -521,6 +668,121 @@ impl Tab {
             return None;
         }
         self.layout.pane_ids().into_iter().find(|id| *id != closing)
+    }
+
+    /// The pane that receives keyboard input: the top floating pane while the
+    /// floating layer is shown, otherwise the focused tiled pane.
+    pub fn focused_pane(&self) -> PaneId {
+        self.floating
+            .focused_pane()
+            .unwrap_or_else(|| self.layout.focused())
+    }
+
+    pub fn is_floating(&self, pane_id: PaneId) -> bool {
+        self.floating.contains(pane_id)
+    }
+
+    /// Every pane of the tab: tiled panes in layout order, then floating panes bottom to top.
+    pub fn pane_ids(&self) -> Vec<PaneId> {
+        let mut ids = self.layout.pane_ids();
+        ids.extend(self.floating.panes().iter().map(|pane| pane.id));
+        ids
+    }
+
+    pub fn pane_count(&self) -> usize {
+        self.layout.pane_count() + self.floating.len()
+    }
+
+    /// Whether a viewer of this tab currently sees `pane_id` on screen.
+    pub fn pane_is_visible(&self, pane_id: PaneId) -> bool {
+        if !self.panes.contains_key(&pane_id) {
+            return false;
+        }
+        let focused = self.focused_pane();
+        if self.zoomed && self.floating.contains(focused) {
+            return pane_id == focused;
+        }
+        if self.floating.contains(pane_id) {
+            return self.floating.is_rendered(pane_id);
+        }
+        !self.zoomed || pane_id == focused
+    }
+
+    /// Move keyboard focus to `pane_id`. Focusing a floating pane raises it and
+    /// shows the floating layer; focusing a tiled pane hides unpinned floating panes.
+    pub fn focus_pane(&mut self, pane_id: PaneId) -> bool {
+        if self.floating.focus(pane_id) {
+            return true;
+        }
+        if !self.layout.pane_ids().contains(&pane_id) {
+            return false;
+        }
+        self.layout.focus_pane(pane_id);
+        self.floating.hide();
+        true
+    }
+
+    /// Show or hide the floating layer. Hiding it while a floating pane is
+    /// zoomed also ends the zoom, so the tiled pane does not appear zoomed.
+    pub(crate) fn set_floating_visible(&mut self, visible: bool) -> bool {
+        let was_visible = self.floating.is_visible();
+        if visible {
+            self.floating.show();
+        } else {
+            if self.zoomed && self.floating.focused_pane().is_some() {
+                self.zoomed = false;
+            }
+            self.floating.hide();
+        }
+        was_visible != self.floating.is_visible()
+    }
+
+    /// Turn a tiled pane into the top floating pane. The tab must keep at
+    /// least one tiled pane, so its last tiled pane cannot float.
+    pub(crate) fn float_pane(&mut self, pane_id: PaneId) -> bool {
+        if self.floating.contains(pane_id)
+            || self.layout.pane_count() <= 1
+            || !self.layout.pane_ids().contains(&pane_id)
+        {
+            return false;
+        }
+        let next_root = self.promoted_root_if_needed(pane_id);
+        if !self.layout.close_pane(pane_id) {
+            return false;
+        }
+        if let Some(next_root) = next_root {
+            self.root_pane = next_root;
+        }
+        let rect = self.floating.next_rect();
+        self.floating.insert(
+            FloatingPane {
+                id: pane_id,
+                rect,
+                pinned: false,
+            },
+            true,
+        );
+        self.zoomed = false;
+        true
+    }
+
+    /// Put a floating pane back into the split tree next to the focused tiled
+    /// pane and focus it there.
+    pub(crate) fn embed_pane(&mut self, pane_id: PaneId) -> bool {
+        if !self.floating.contains(pane_id) {
+            return false;
+        }
+        let target = self.layout.focused();
+        if !self
+            .layout
+            .insert_pane_near(target, pane_id, Direction::Horizontal, 0.5, true)
+        {
+            return false;
+        }
+        self.floating.remove(pane_id);
+        self.floating.hide();
+        self.zoomed = false;
+        true
     }
 
     pub fn terminal_id(&self, pane_id: PaneId) -> Option<&TerminalId> {

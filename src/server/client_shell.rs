@@ -50,8 +50,7 @@ pub(super) fn snapshot_with_completions(
                 .get(workspace_index)?
                 .tabs
                 .get(tab_index)?
-                .layout
-                .focused();
+                .focused_pane();
             app.public_pane_id(workspace_index, pane_id)
         })
         .or_else(|| snapshot.focused_pane_id.clone());
@@ -145,6 +144,11 @@ pub(super) fn snapshot_with_completions(
                 foreground_cwd: pane.foreground_cwd,
                 focused,
                 right_click_passthrough,
+                floating: pane
+                    .floating
+                    .map(|floating| protocol::ClientShellFloatingPane {
+                        pinned: floating.pinned,
+                    }),
             }
         })
         .collect();
@@ -341,12 +345,24 @@ pub(super) fn render_pane_surface(
             layout,
             area,
         );
+    let surface_tab = target.and_then(|target| {
+        app.state
+            .workspaces
+            .get(target.workspace_index)?
+            .tabs
+            .get(target.tab_index)
+    });
+    let floating_start = crate::ui::floating_info_start(surface_tab, &layout.pane_infos);
+    let (tiled_infos, floating_infos) = layout.pane_infos.split_at(floating_start);
     let panes = target
         .map(|target| {
             let workspace_index = target.workspace_index;
-            layout
-                .pane_infos
+            // Clients hit-test with the first pane under the pointer, so the
+            // topmost floating pane leads and tiled panes keep layout order.
+            floating_infos
                 .iter()
+                .rev()
+                .chain(tiled_infos)
                 .filter_map(|pane| {
                     app.public_pane_id(workspace_index, pane.id).map(|pane_id| {
                         let runtime = app.state.runtime_for_pane_in_workspace(
@@ -404,11 +420,7 @@ pub(super) fn render_pane_surface(
                 .collect()
         })
         .unwrap_or_default();
-    let pane_frames = layout
-        .pane_infos
-        .iter()
-        .map(|pane| pane.rect)
-        .collect::<Vec<_>>();
+    let pane_frames = tiled_infos.iter().map(|pane| pane.rect).collect::<Vec<_>>();
     let splits = layout
         .split_borders
         .iter()
@@ -629,6 +641,72 @@ fn split_hit_rect(
 mod tests {
     use super::*;
 
+    #[tokio::test(flavor = "current_thread")]
+    async fn pane_surface_lists_floating_panes_first_and_snapshot_marks_them() {
+        let (_api_tx, api_rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut app = crate::app::App::new(
+            &crate::config::Config::default(),
+            crate::app::AppPolicy::TEST,
+            None,
+            api_rx,
+            crate::api::EventHub::default(),
+        );
+        let mut workspace = crate::workspace::Workspace::test_new("floating");
+        let root = workspace.tabs[0].root_pane;
+        let split = workspace.test_split(ratatui::layout::Direction::Horizontal);
+        let lower = workspace.test_add_floating(true);
+        let upper = workspace.test_add_floating(true);
+        workspace.tabs[0].floating.set_pinned(lower, true);
+        app.state.workspaces = vec![workspace];
+        app.state.active = Some(0);
+        app.state.ensure_test_terminals();
+
+        let surface = render_pane_surface(
+            &mut app,
+            Some(crate::ui::TabSurfaceTarget {
+                workspace_index: 0,
+                tab_index: 0,
+            }),
+            Rect::new(0, 0, 100, 30),
+            false,
+            false,
+            Default::default(),
+            &Default::default(),
+            1,
+        )
+        .unwrap_or_else(|_| panic!("surface render deferred"));
+        let order: Vec<_> = surface
+            .panes
+            .iter()
+            .map(|pane| (pane.pane_id.clone(), pane.focused))
+            .collect();
+        let public = |pane| app.public_pane_id(0, pane).unwrap();
+        assert_eq!(
+            order,
+            vec![
+                (public(upper), true),
+                (public(lower), false),
+                (public(root), false),
+                (public(split), false),
+            ]
+        );
+        assert_eq!(surface.splits.len(), 1);
+
+        let shell = snapshot(&app, "boot", 1, None, None);
+        let floating = |pane| {
+            shell
+                .panes
+                .iter()
+                .find(|candidate| candidate.pane_id == public(pane))
+                .and_then(|candidate| candidate.floating)
+        };
+        assert_eq!(floating(root), None);
+        assert_eq!(
+            floating(lower),
+            Some(protocol::ClientShellFloatingPane { pinned: true })
+        );
+        assert_eq!(shell.focused_pane_id, Some(public(upper)));
+    }
     #[tokio::test(flavor = "current_thread")]
     async fn snapshot_metadata_skips_scroll_reads_and_preserves_public_session_data() {
         let (_api_tx, api_rx) = tokio::sync::mpsc::unbounded_channel();

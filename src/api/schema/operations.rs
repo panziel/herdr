@@ -205,6 +205,12 @@ mod tests {
             "plugin.pane.open",
             "plugin.pane.focus",
             "plugin.pane.close",
+            "tab.floating.set",
+            "pane.floating.create",
+            "pane.floating.set",
+            "pane.pin",
+            "pane.floating.move",
+            "pane.floating.geometry",
         ]
         .into_iter()
         .collect::<BTreeSet<_>>();

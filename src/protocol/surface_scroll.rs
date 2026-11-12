@@ -288,7 +288,12 @@ pub(crate) fn message(last: &PaneSurfaceFrame, patch: &PaneSurfacePatch) -> Opti
             .iter()
             .any(|existing| existing.pane_id == pane.pane_id && existing.inner_rect == rect);
         let scroll = SurfaceScroll { rect, shift: 1 };
-        if !committed || !scroll_fits(&scroll, frame.width, frame.height) {
+        // A floating pane drawn over this region does not move with its scroll.
+        let overlapped = last
+            .panes
+            .iter()
+            .any(|other| other.pane_id != pane.pane_id && rects_overlap(other.rect, rect));
+        if !committed || overlapped || !scroll_fits(&scroll, frame.width, frame.height) {
             continue;
         }
         if let Some((shift, rows)) = pane_scroll(frame, rect, &patch.rows) {
@@ -608,6 +613,25 @@ mod tests {
                 assert!(!overlap, "expanded rows overlap: {a:?} / {b:?}");
             }
         }
+    }
+
+    #[test]
+    fn a_pane_under_a_floating_pane_is_never_scrolled() {
+        let mut last = surface();
+        let mut floating = pane();
+        floating.pane_id = "w1:p2".into();
+        floating.rect = SurfaceRect {
+            x: PANE.x + 2,
+            y: PANE.y + 2,
+            width: 6,
+            height: 4,
+        };
+        last.panes.insert(0, floating);
+        let mut next = last.frame.clone();
+        for y in 0..PANE.height {
+            write(&mut next, y, &line(i32::from(y) + 1));
+        }
+        assert!(message(&last, &row_patch(&last, &next)).is_none());
     }
 
     #[test]

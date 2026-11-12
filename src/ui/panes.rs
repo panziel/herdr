@@ -162,6 +162,8 @@ pub(crate) enum NewPanePlacement {
     ZoomedOverlay,
     /// An existing pane in workspace `ws_idx` getting a new terminal.
     Existing { ws_idx: usize, pane: PaneId },
+    /// The next floating pane of tab `tab_idx` in workspace `ws_idx`.
+    Floating { ws_idx: usize, tab_idx: usize },
 }
 
 /// Terminal rows and columns a new pane gets once its tab is laid out in
@@ -186,13 +188,25 @@ pub(crate) fn new_pane_terminal_size(
         let ws = app.workspaces.get(ws_idx)?;
         ws.tabs.get(ws.find_tab_index_for_pane(pane)?)
     };
+    let next_floating = |tab: &crate::workspace::Tab| {
+        pane_inner_rect(tab.floating.next_rect().resolve(area), Borders::ALL)
+    };
     let pane_inner = match placement {
         NewPanePlacement::Alone => alone(),
+        NewPanePlacement::Floating { ws_idx, tab_idx } => app
+            .workspaces
+            .get(ws_idx)
+            .and_then(|ws| ws.tabs.get(tab_idx))
+            .map(next_floating)
+            .unwrap_or_else(alone),
         NewPanePlacement::Existing { ws_idx, pane } => tab_for(ws_idx, pane)
             .and_then(|tab| {
-                if tab.zoomed && tab.layout.focused() == pane {
-                    let multi_pane = tab.layout.pane_count() > 1;
+                if tab.zoomed && tab.focused_pane() == pane {
+                    let multi_pane = tab.pane_count() > 1;
                     return Some(pane_inner_rect(area, zoomed_pane_borders(app, multi_pane)));
+                }
+                if let Some(floating) = tab.floating.get(pane) {
+                    return Some(pane_inner_rect(floating.rect.resolve(area), Borders::ALL));
                 }
                 let panes = tab.layout.panes(area);
                 let index = panes.iter().position(|info| info.id == pane)?;
@@ -206,8 +220,14 @@ pub(crate) fn new_pane_terminal_size(
             direction,
             ratio,
         } => tab_for(ws_idx, target)
-            .and_then(|tab| tab.layout.panes_after_split(area, target, direction, ratio))
-            .map(|(panes, new_index)| laid_out(panes, new_index))
+            .and_then(|tab| {
+                if tab.is_floating(target) {
+                    return Some(next_floating(tab));
+                }
+                tab.layout
+                    .panes_after_split(area, target, direction, ratio)
+                    .map(|(panes, new_index)| laid_out(panes, new_index))
+            })
             .unwrap_or_else(alone),
     };
     new_terminal_size(app, pane_inner)
@@ -407,14 +427,10 @@ pub(super) fn resize_tab_panes(
     area: Rect,
     cell_size: crate::kitty_graphics::HostCellSize,
 ) {
-    let multi_pane = tab.layout.pane_count() > 1;
-
-    if tab.zoomed {
-        let focused_id = tab.layout.focused();
+    let resize = |pane_id: PaneId, pane_inner: Rect| {
         if let Some((terminal_id, rt)) =
-            runtime_for_tab_pane(app, terminal_runtimes, workspace_index, tab, focused_id)
+            runtime_for_tab_pane(app, terminal_runtimes, workspace_index, tab, pane_id)
         {
-            let pane_inner = pane_inner_rect(area, zoomed_pane_borders(app, multi_pane));
             let inner_rect = terminal_inner_rect(rt, pane_inner, app.pane_scrollbars);
             if !app.direct_attach_resize_locks.contains(terminal_id) {
                 rt.resize(
@@ -425,34 +441,40 @@ pub(super) fn resize_tab_panes(
                 );
             }
         }
-        return;
+    };
+
+    let zoomed_pane = tab.zoomed.then(|| tab.focused_pane());
+    if let Some(focused_id) = zoomed_pane {
+        let multi_pane = tab.pane_count() > 1;
+        resize(
+            focused_id,
+            pane_inner_rect(area, zoomed_pane_borders(app, multi_pane)),
+        );
+    } else {
+        for info in apply_pane_chrome(
+            tab.layout.panes(area),
+            app.pane_borders,
+            app.pane_gaps,
+            app.pane_outer_borders,
+        ) {
+            resize(info.id, pane_inner_rect(info.rect, info.borders));
+        }
     }
-
-    for info in apply_pane_chrome(
-        tab.layout.panes(area),
-        app.pane_borders,
-        app.pane_gaps,
-        app.pane_outer_borders,
-    ) {
-        let pane_inner = pane_inner_rect(info.rect, info.borders);
-
-        if let Some((terminal_id, rt)) =
-            runtime_for_tab_pane(app, terminal_runtimes, workspace_index, tab, info.id)
-        {
-            let inner_rect = terminal_inner_rect(rt, pane_inner, app.pane_scrollbars);
-            if !app.direct_attach_resize_locks.contains(terminal_id) {
-                rt.resize(
-                    inner_rect.height,
-                    inner_rect.width,
-                    cell_size.width_px,
-                    cell_size.height_px,
-                );
-            }
+    for floating in tab.floating.panes() {
+        if Some(floating.id) != zoomed_pane {
+            resize(floating.id, floating_pane_inner_rect(floating, area));
         }
     }
 }
 
+fn floating_pane_inner_rect(floating: &crate::workspace::FloatingPane, area: Rect) -> Rect {
+    pane_inner_rect(floating.rect.resolve(area), Borders::ALL)
+}
+
 /// Compute pane layout info and optionally resize pane runtimes to match.
+///
+/// Infos come in draw order: the tiled layout (or the zoomed pane) first,
+/// then rendered floating panes from bottom to top.
 pub(super) fn compute_pane_infos_for_tab(
     app: &AppState,
     terminal_runtimes: &TerminalRuntimeRegistry,
@@ -470,74 +492,125 @@ pub(super) fn compute_pane_infos_for_tab(
         return Vec::new();
     };
 
-    let multi_pane = tab.layout.pane_count() > 1;
-
-    if tab.zoomed {
-        let focused_id = tab.layout.focused();
-        let borders = zoomed_pane_borders(app, multi_pane);
-        let pane_inner = pane_inner_rect(area, borders);
-        let mut inner_rect = pane_inner;
-        let mut scrollbar_rect = None;
-        if let Some(rt) = app.runtime_for_pane_in_workspace(terminal_runtimes, ws_idx, focused_id) {
-            (inner_rect, scrollbar_rect) =
-                stable_scrollbar_gutter(rt, pane_inner, app.pane_scrollbars);
-            if resize_panes
-                && tab.terminal_id(focused_id).is_some_and(|terminal_id| {
-                    !app.direct_attach_resize_locks.contains(terminal_id)
-                })
-            {
-                rt.resize(
-                    inner_rect.height,
-                    inner_rect.width,
-                    cell_size.width_px,
-                    cell_size.height_px,
-                );
-            }
+    let fit_runtime = |pane_id: PaneId, pane_inner: Rect, resize: bool| {
+        let Some(rt) = app.runtime_for_pane_in_workspace(terminal_runtimes, ws_idx, pane_id) else {
+            return (pane_inner, None);
+        };
+        let (inner_rect, scrollbar_rect) =
+            stable_scrollbar_gutter(rt, pane_inner, app.pane_scrollbars);
+        if resize
+            && tab
+                .terminal_id(pane_id)
+                .is_some_and(|terminal_id| !app.direct_attach_resize_locks.contains(terminal_id))
+        {
+            rt.resize(
+                inner_rect.height,
+                inner_rect.width,
+                cell_size.width_px,
+                cell_size.height_px,
+            );
         }
-        return vec![PaneInfo {
+        (inner_rect, scrollbar_rect)
+    };
+
+    let focused_id = tab.focused_pane();
+    let mut pane_infos = if tab.zoomed {
+        let borders = zoomed_pane_borders(app, tab.pane_count() > 1);
+        let (inner_rect, scrollbar_rect) =
+            fit_runtime(focused_id, pane_inner_rect(area, borders), resize_panes);
+        let zoomed = PaneInfo {
             id: focused_id,
             rect: area,
             inner_rect,
             scrollbar_rect,
             borders,
             is_focused: true,
-        }];
-    }
-
-    let mut pane_infos = apply_pane_chrome(
-        tab.layout.panes(area),
-        app.pane_borders,
-        app.pane_gaps,
-        app.pane_outer_borders,
-    );
-
-    for info in &mut pane_infos {
-        let pane_inner = pane_inner_rect(info.rect, info.borders);
-
-        let mut inner_rect = pane_inner;
-        let mut scrollbar_rect = None;
-        if let Some(rt) = app.runtime_for_pane_in_workspace(terminal_runtimes, ws_idx, info.id) {
-            (inner_rect, scrollbar_rect) =
-                stable_scrollbar_gutter(rt, pane_inner, app.pane_scrollbars);
-            if resize_panes
-                && tab.terminal_id(info.id).is_some_and(|terminal_id| {
-                    !app.direct_attach_resize_locks.contains(terminal_id)
-                })
-            {
-                rt.resize(
-                    inner_rect.height,
-                    inner_rect.width,
-                    cell_size.width_px,
-                    cell_size.height_px,
-                );
-            }
+        };
+        vec![zoomed]
+    } else {
+        let floating_focused = tab.floating.focused_pane().is_some();
+        let mut tiled = apply_pane_chrome(
+            tab.layout.panes(area),
+            app.pane_borders,
+            app.pane_gaps,
+            app.pane_outer_borders,
+        );
+        for info in &mut tiled {
+            let pane_inner = pane_inner_rect(info.rect, info.borders);
+            (info.inner_rect, info.scrollbar_rect) = fit_runtime(info.id, pane_inner, resize_panes);
+            info.is_focused &= !floating_focused;
         }
+        tiled
+    };
 
-        info.inner_rect = inner_rect;
-        info.scrollbar_rect = scrollbar_rect;
+    // A zoomed floating pane covers everything, including pinned panes.
+    let floating_zoomed = tab.zoomed && tab.is_floating(focused_id);
+    for floating in tab.floating.rendered_panes().filter(|_| !floating_zoomed) {
+        let rect = floating.rect.resolve(area);
+        let (inner_rect, scrollbar_rect) = fit_runtime(
+            floating.id,
+            pane_inner_rect(rect, Borders::ALL),
+            resize_panes,
+        );
+        pane_infos.push(PaneInfo {
+            id: floating.id,
+            rect,
+            inner_rect,
+            scrollbar_rect,
+            borders: Borders::ALL,
+            is_focused: floating.id == focused_id,
+        });
+    }
+    if resize_panes {
+        resize_undrawn_floating_panes(
+            app,
+            terminal_runtimes,
+            ws_idx,
+            tab,
+            &pane_infos,
+            area,
+            cell_size,
+        );
     }
 
     pane_infos
+}
+
+/// Floating panes that are not drawn keep their own size, so showing them
+/// again does not reflow their programs.
+fn resize_undrawn_floating_panes(
+    app: &AppState,
+    terminal_runtimes: &TerminalRuntimeRegistry,
+    ws_idx: usize,
+    tab: &crate::workspace::Tab,
+    drawn: &[PaneInfo],
+    area: Rect,
+    cell_size: crate::kitty_graphics::HostCellSize,
+) {
+    for floating in tab.floating.panes() {
+        if drawn.iter().any(|info| info.id == floating.id) {
+            continue;
+        }
+        let Some((terminal_id, rt)) =
+            runtime_for_tab_pane(app, terminal_runtimes, ws_idx, tab, floating.id)
+        else {
+            continue;
+        };
+        if app.direct_attach_resize_locks.contains(terminal_id) {
+            continue;
+        }
+        let inner_rect = terminal_inner_rect(
+            rt,
+            floating_pane_inner_rect(floating, area),
+            app.pane_scrollbars,
+        );
+        rt.resize(
+            inner_rect.height,
+            inner_rect.width,
+            cell_size.width_px,
+            cell_size.height_px,
+        );
+    }
 }
 
 #[cfg(test)]
@@ -584,29 +657,110 @@ pub(super) fn render_panes(
     let Some(ws) = app.workspaces.get(ws_idx) else {
         return;
     };
+    let tab = ws.tabs.get(target.tab_index);
+    let floating_start = floating_info_start(tab, pane_infos);
+    let (tiled, floating) = pane_infos.split_at(floating_start);
 
-    for info in pane_infos {
-        if let Some(rt) = app.runtime_for_pane_in_workspace(terminal_runtimes, ws_idx, info.id) {
-            let show_cursor = info.is_focused
-                && !pane_is_scrolled_back(rt)
-                && app.pane_exposes_host_cursor(ws_idx, info.id);
-            rt.render(frame, info.inner_rect, show_cursor);
-            render_pane_scrollbar(app, frame, info, rt);
-        } else if let Some(reason) = ws
-            .tabs
-            .get(target.tab_index)
-            .and_then(|tab| tab.terminal_id(info.id))
-            .and_then(|id| app.terminals.get(id))
-            .and_then(|terminal| terminal.restore_error.as_deref())
-        {
-            frame.render_widget(
-                Paragraph::new(reason).wrap(Wrap { trim: false }),
-                info.inner_rect,
-            );
-        }
+    for info in tiled {
+        render_pane_content(app, terminal_runtimes, frame, ws_idx, ws, target, info);
     }
+    render_pane_borders(app, ws, tiled, split_borders, frame);
 
-    render_pane_borders(app, ws, pane_infos, split_borders, frame);
+    let Some(tab) = tab else {
+        return;
+    };
+    for info in floating {
+        frame.render_widget(ratatui::widgets::Clear, info.rect);
+        render_floating_pane_frame(app, ws, tab, info, frame);
+        render_pane_content(app, terminal_runtimes, frame, ws_idx, ws, target, info);
+    }
+}
+
+/// Index of the first framed floating pane in `pane_infos`. Infos list the
+/// tiled layout first and floating panes after it, bottom to top.
+pub(crate) fn floating_info_start(
+    tab: Option<&crate::workspace::Tab>,
+    pane_infos: &[PaneInfo],
+) -> usize {
+    pane_infos
+        .iter()
+        .position(|info| tab.is_some_and(|tab| !tab.zoomed && tab.is_floating(info.id)))
+        .unwrap_or(pane_infos.len())
+}
+
+fn render_pane_content(
+    app: &AppState,
+    terminal_runtimes: &TerminalRuntimeRegistry,
+    frame: &mut Frame,
+    ws_idx: usize,
+    ws: &crate::workspace::Workspace,
+    target: super::tab_surface::TabSurfaceTarget,
+    info: &PaneInfo,
+) {
+    if let Some(rt) = app.runtime_for_pane_in_workspace(terminal_runtimes, ws_idx, info.id) {
+        let show_cursor = info.is_focused
+            && !pane_is_scrolled_back(rt)
+            && app.pane_exposes_host_cursor(ws_idx, info.id);
+        rt.render(frame, info.inner_rect, show_cursor);
+        render_pane_scrollbar(app, frame, info, rt);
+    } else if let Some(reason) = ws
+        .tabs
+        .get(target.tab_index)
+        .and_then(|tab| tab.terminal_id(info.id))
+        .and_then(|id| app.terminals.get(id))
+        .and_then(|terminal| terminal.restore_error.as_deref())
+    {
+        frame.render_widget(
+            Paragraph::new(reason).wrap(Wrap { trim: false }),
+            info.inner_rect,
+        );
+    }
+}
+
+/// Rounded frame, title and pin toggle around one floating pane.
+fn render_floating_pane_frame(
+    app: &AppState,
+    ws: &crate::workspace::Workspace,
+    tab: &crate::workspace::Tab,
+    info: &PaneInfo,
+    frame: &mut Frame,
+) {
+    let accent = if info.is_focused {
+        app.palette.accent
+    } else {
+        app.palette.overlay0
+    };
+    frame.render_widget(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_type(ratatui::widgets::BorderType::Rounded)
+            .border_style(Style::default().fg(accent)),
+        info.rect,
+    );
+    let pinned = tab
+        .floating
+        .get(info.id)
+        .is_some_and(|floating| floating.pinned);
+    let pin_button = crate::workspace::floating::pin_button_rect(info.rect, pinned);
+    let title_end = pin_button.map_or(info.rect.right().saturating_sub(1), |button| button.x);
+    let buf = frame.buffer_mut();
+    render_pane_border_title(app, ws, info, title_end, buf);
+    if let Some(button) = pin_button {
+        let style = if pinned {
+            Style::default()
+                .fg(app.palette.accent)
+                .add_modifier(ratatui::style::Modifier::BOLD)
+        } else {
+            Style::default().fg(app.palette.overlay0)
+        };
+        buf.set_stringn(
+            button.x,
+            button.y,
+            crate::workspace::floating::pin_button_label(pinned),
+            usize::from(button.width),
+            style,
+        );
+    }
 }
 
 pub(crate) fn popup_pane_rects(app: &AppState, area: Rect) -> Option<(Rect, Rect)> {
@@ -824,67 +978,78 @@ fn render_pane_border_titles(
     frame: &mut Frame,
 ) {
     let buf = frame.buffer_mut();
-    let area = buf.area;
     for info in pane_infos {
-        if !info.borders.contains(Borders::TOP) || info.rect.width <= 4 {
-            continue;
-        }
-        let Some(terminal) = ws
-            .pane_state(info.id)
-            .and_then(|pane| app.terminals.get(&pane.attached_terminal_id))
-        else {
-            continue;
-        };
-        let Some((title, status)) = pane_border_title_parts(
-            terminal
-                .border_label(app.show_agent_labels_on_pane_borders)
-                .as_deref(),
-            pane_border_status(terminal, app.working_spinner_phase),
-            info.rect.width,
-        ) else {
-            continue;
-        };
-        let y = info.rect.y;
-        if y < area.y || y >= area.y.saturating_add(area.height) {
-            continue;
-        }
-        let start_x = info.rect.x.saturating_add(3);
         let end_x = info
             .rect
             .x
             .saturating_add(info.rect.width)
-            .saturating_sub(1)
-            .min(area.x.saturating_add(area.width));
-        if start_x >= end_x {
-            continue;
-        }
-        let style = if info.is_focused {
-            Style::default().fg(app.palette.accent)
-        } else {
-            Style::default().fg(app.palette.overlay0)
-        };
-        let max_width = end_x.saturating_sub(start_x) as usize;
-        let title_width = super::text::display_width(&title);
-        buf.set_stringn(start_x, y, title, max_width, style);
-        if let Some(status) = status {
-            let status_x = start_x.saturating_add(title_width as u16);
-            if status_x < end_x {
-                let status_style =
-                    Style::default().fg(pane_border_status(terminal, app.working_spinner_phase)
-                        .map(|status| status.color(&app.palette))
-                        .unwrap_or(if info.is_focused {
-                            app.palette.accent
-                        } else {
-                            app.palette.overlay0
-                        }));
-                buf.set_stringn(
-                    status_x,
-                    y,
-                    status,
-                    end_x.saturating_sub(status_x) as usize,
-                    status_style,
-                );
-            }
+            .saturating_sub(1);
+        render_pane_border_title(app, ws, info, end_x, buf);
+    }
+}
+
+/// Title and agent status on the top border of `info`, clipped before `end_x`.
+fn render_pane_border_title(
+    app: &AppState,
+    ws: &crate::workspace::Workspace,
+    info: &PaneInfo,
+    end_x: u16,
+    buf: &mut Buffer,
+) {
+    let area = buf.area;
+    if !info.borders.contains(Borders::TOP) || info.rect.width <= 4 {
+        return;
+    }
+    let Some(terminal) = ws
+        .pane_state(info.id)
+        .and_then(|pane| app.terminals.get(&pane.attached_terminal_id))
+    else {
+        return;
+    };
+    let Some((title, status)) = pane_border_title_parts(
+        terminal
+            .border_label(app.show_agent_labels_on_pane_borders)
+            .as_deref(),
+        pane_border_status(terminal, app.working_spinner_phase),
+        info.rect.width,
+    ) else {
+        return;
+    };
+    let y = info.rect.y;
+    if y < area.y || y >= area.y.saturating_add(area.height) {
+        return;
+    }
+    let start_x = info.rect.x.saturating_add(3);
+    let end_x = end_x.min(area.x.saturating_add(area.width));
+    if start_x >= end_x {
+        return;
+    }
+    let style = if info.is_focused {
+        Style::default().fg(app.palette.accent)
+    } else {
+        Style::default().fg(app.palette.overlay0)
+    };
+    let max_width = end_x.saturating_sub(start_x) as usize;
+    let title_width = super::text::display_width(&title);
+    buf.set_stringn(start_x, y, title, max_width, style);
+    if let Some(status) = status {
+        let status_x = start_x.saturating_add(title_width as u16);
+        if status_x < end_x {
+            let status_style =
+                Style::default().fg(pane_border_status(terminal, app.working_spinner_phase)
+                    .map(|status| status.color(&app.palette))
+                    .unwrap_or(if info.is_focused {
+                        app.palette.accent
+                    } else {
+                        app.palette.overlay0
+                    }));
+            buf.set_stringn(
+                status_x,
+                y,
+                status,
+                end_x.saturating_sub(status_x) as usize,
+                status_style,
+            );
         }
     }
 }
@@ -1092,6 +1257,119 @@ mod tests {
         let text: String = buffer.content.iter().map(|cell| cell.symbol()).collect();
         assert!(text.contains("Saved directory is unavailable."));
         assert!(cursor.is_none_or(|cursor| !cursor.visible));
+    }
+
+    #[test]
+    fn floating_panes_are_laid_out_and_drawn_above_tiled_panes() {
+        let mut app = AppState::test_new();
+        let mut workspace = Workspace::test_new("floating");
+        let root = workspace.tabs[0].root_pane;
+        let floating = workspace.test_add_floating(true);
+        app.workspaces = vec![workspace];
+        app.active = Some(0);
+        app.ensure_test_terminals();
+        let runtimes = TerminalRuntimeRegistry::new();
+        let area = Rect::new(0, 0, 80, 24);
+        let target = Some(crate::ui::TabSurfaceTarget {
+            workspace_index: 0,
+            tab_index: 0,
+        });
+
+        let layout = crate::ui::compute_tab_surface_for(
+            &app,
+            &runtimes,
+            target,
+            area,
+            false,
+            Default::default(),
+        );
+        let ids: Vec<_> = layout.pane_infos.iter().map(|info| info.id).collect();
+        assert_eq!(ids, vec![root, floating]);
+        assert!(!layout.pane_infos[0].is_focused);
+        assert!(layout.pane_infos[1].is_focused);
+        let frame = crate::workspace::FloatingRect::default().resolve(area);
+        assert_eq!(layout.pane_infos[1].rect, frame);
+        assert_eq!(
+            floating_info_start(app.workspaces[0].tabs.first(), &layout.pane_infos),
+            1
+        );
+
+        let (buffer, _, _, _) =
+            crate::server::render_stream::render_tab_surface_virtual(&app, &runtimes, layout, area);
+        assert_eq!(buffer[(frame.x, frame.y)].symbol(), "╭");
+        assert_eq!(
+            buffer[(frame.right() - 1, frame.bottom() - 1)].symbol(),
+            "╯"
+        );
+        let pin = crate::workspace::floating::pin_button_rect(frame, false).unwrap();
+        let label: String = (pin.x..pin.right())
+            .map(|x| buffer[(x, pin.y)].symbol().to_owned())
+            .collect();
+        assert_eq!(label, crate::workspace::floating::pin_button_label(false));
+    }
+
+    #[test]
+    fn focusing_a_tiled_pane_keeps_only_pinned_floating_panes_on_screen() {
+        let mut app = AppState::test_new();
+        let mut workspace = Workspace::test_new("floating");
+        let root = workspace.tabs[0].root_pane;
+        let pinned = workspace.test_add_floating(true);
+        let unpinned = workspace.test_add_floating(true);
+        workspace.tabs[0].floating.set_pinned(pinned, true);
+        assert!(workspace.tabs[0].focus_pane(root));
+        app.workspaces = vec![workspace];
+        app.active = Some(0);
+        app.ensure_test_terminals();
+        let runtimes = TerminalRuntimeRegistry::new();
+        let area = Rect::new(0, 0, 80, 24);
+        let layout = crate::ui::compute_tab_surface_for(
+            &app,
+            &runtimes,
+            Some(crate::ui::TabSurfaceTarget {
+                workspace_index: 0,
+                tab_index: 0,
+            }),
+            area,
+            false,
+            Default::default(),
+        );
+        let drawn: Vec<_> = layout
+            .pane_infos
+            .iter()
+            .map(|info| (info.id, info.is_focused))
+            .collect();
+        assert_eq!(drawn, vec![(root, true), (pinned, false)]);
+        assert!(!app.workspaces[0].tabs[0].pane_is_visible(unpinned));
+    }
+
+    #[test]
+    fn zoomed_floating_pane_covers_the_whole_tab() {
+        let mut app = AppState::test_new();
+        let mut workspace = Workspace::test_new("floating");
+        let pinned = workspace.test_add_floating(true);
+        workspace.tabs[0].floating.set_pinned(pinned, true);
+        let zoomed = workspace.test_add_floating(true);
+        workspace.tabs[0].zoomed = true;
+        app.workspaces = vec![workspace];
+        app.active = Some(0);
+        app.ensure_test_terminals();
+        let runtimes = TerminalRuntimeRegistry::new();
+        let area = Rect::new(0, 0, 80, 24);
+        let layout = crate::ui::compute_tab_surface_for(
+            &app,
+            &runtimes,
+            Some(crate::ui::TabSurfaceTarget {
+                workspace_index: 0,
+                tab_index: 0,
+            }),
+            area,
+            false,
+            Default::default(),
+        );
+        assert_eq!(layout.pane_infos.len(), 1);
+        assert_eq!(layout.pane_infos[0].id, zoomed);
+        assert_eq!(layout.pane_infos[0].rect, area);
+        assert!(layout.split_borders.is_empty());
     }
 
     #[test]

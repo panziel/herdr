@@ -4,6 +4,7 @@ pub mod agents;
 pub mod commands;
 pub mod common;
 pub mod events;
+pub mod floating;
 pub mod integrations;
 pub(crate) mod operations;
 pub mod panes;
@@ -19,6 +20,7 @@ pub use agents::*;
 pub use commands::*;
 pub use common::*;
 pub use events::*;
+pub use floating::*;
 pub use integrations::*;
 pub use panes::*;
 pub use plugins::*;
@@ -145,6 +147,12 @@ operations::define_operations! {
     PluginPaneOpen(PluginPaneOpenParams) => "plugin.pane.open", true, false;
     PluginPaneFocus(PluginPaneFocusParams) => "plugin.pane.focus", true, false;
     PluginPaneClose(PluginPaneCloseParams) => "plugin.pane.close", true, false;
+    TabFloatingSet(TabFloatingParams) => "tab.floating.set", true, true;
+    PaneFloatingCreate(PaneFloatingCreateParams) => "pane.floating.create", true, true;
+    PaneFloatingSet(PaneFloatingSetParams) => "pane.floating.set", true, true;
+    PanePin(PanePinParams) => "pane.pin", true, true;
+    PaneFloatingMove(PaneFloatingMoveParams) => "pane.floating.move", true, true;
+    PaneFloatingGeometry(PaneFloatingGeometryParams) => "pane.floating.geometry", true, true;
 }
 
 #[cfg(test)]

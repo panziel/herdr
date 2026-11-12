@@ -997,7 +997,7 @@ impl AppState {
         crate::ui::new_layout_terminal_sizes(self, self.new_pane_area(), layout)
     }
 
-    fn new_pane_area(&self) -> Rect {
+    pub(crate) fn new_pane_area(&self) -> Rect {
         let area = self.view.terminal_area;
         if area.width == 0 || area.height == 0 {
             Rect::new(0, 0, self.headless_size.0, self.headless_size.1)
@@ -1047,11 +1047,7 @@ impl AppState {
         else {
             return false;
         };
-        if tab.zoomed {
-            tab.layout.focused() == pane_id
-        } else {
-            tab.layout.pane_ids().contains(&pane_id)
-        }
+        tab.pane_is_visible(pane_id)
     }
 
     pub fn is_active_pane(
@@ -1072,7 +1068,7 @@ impl AppState {
         if tab_idx != ws.active_tab_index() {
             return false;
         }
-        ws.active_tab().map(|tab| tab.layout.focused()) == Some(pane_id)
+        ws.active_tab().map(crate::workspace::Tab::focused_pane) == Some(pane_id)
     }
 }
 

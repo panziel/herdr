@@ -254,6 +254,34 @@ mod tests {
             actual.remove("pane.link.resolve").as_deref(),
             Some("f5e4a3e01453ae7b188f127ce951c12c20e0bebcc17cc364eeb6d1a01fd5bf81")
         );
+        for (method, digest) in [
+            (
+                "pane.floating.create",
+                "7b65606a5990f789c61aceccfee32456cfad4b9e3e71df6d9f2aff9fc0eb9f8a",
+            ),
+            (
+                "pane.floating.geometry",
+                "f16d2cf1a3935c01ebd5979d76bd1fac99d51392a9f22a00f3f006f67763fc09",
+            ),
+            (
+                "pane.floating.move",
+                "72dd190110266ebf17fb8336acdc8a98548146d645a33b916fab47651a68cf77",
+            ),
+            (
+                "pane.floating.set",
+                "66b43e5f90d106b06a2bbf534e0ff66a23bca75f0ddfba5588eb1c2631be2091",
+            ),
+            (
+                "pane.pin",
+                "820d596088b233ddc0002a8c01985f6580e7f96c643ddbe3bfb626fae542eb88",
+            ),
+            (
+                "tab.floating.set",
+                "ed0b37dded8ae86f1d9b95808aafc2ba9317c3420a0a276e3e727f29b806faca",
+            ),
+        ] {
+            assert_eq!(actual.remove(method).as_deref(), Some(digest), "{method}");
+        }
 
         assert_eq!(
             actual, expected,

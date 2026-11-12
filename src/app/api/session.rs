@@ -53,7 +53,6 @@ impl App {
                 }
                 panes.extend(
                     ws.tabs[tab_idx]
-                        .layout
                         .pane_ids()
                         .into_iter()
                         .filter_map(|pane_id| pane_info(self, ws_idx, pane_id)),

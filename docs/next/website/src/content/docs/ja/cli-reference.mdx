@@ -192,6 +192,7 @@ herdr tab get <tab_id>
 herdr tab focus <tab_id>
 herdr tab rename <tab_id> <label>
 herdr tab close <tab_id>
+herdr tab floating [--tab ID] [--toggle|--show|--hide] [--create]
 ```
 
 タブはワークスペース内の別のターミナルレイアウトです。`--workspace` を省略すると、`tab create` はアクティブなワークスペースを使い、存在しなければ失敗します。JSON レスポンスの `.result.tab.tab_id` と `.result.root_pane.pane_id` から ID を取得できます。ワークスペースの最後のタブを閉じると、そのワークスペースも閉じられます。`ui.confirm_close` が有効で、親ワークツリーの最後のタブを閉じるとワークツリーグループ全体が閉じられる場合、`tab close` は `confirmation_required` エラーを返します。
@@ -213,6 +214,10 @@ herdr pane edges [--pane ID|--current]
 herdr pane focus --direction left|right|up|down [--pane ID|--current]
 herdr pane resize --direction left|right|up|down [--amount FLOAT] [--pane ID|--current]
 herdr pane zoom [<pane_id>|--pane ID|--current] [--toggle|--on|--off]
+herdr pane float [<pane_id>|--pane ID|--current] [--toggle|--on|--off]
+herdr pane pin [<pane_id>|--pane ID|--current] [--toggle|--on|--off]
+herdr pane new-floating [--tab ID] [--cwd PATH] [--env KEY=VALUE] [--focus|--no-focus]
+herdr pane float-move --direction left|right|up|down [--cells N] [--pane ID|--current]
 herdr pane rename <pane_id> <label>|--clear
 herdr pane split [<pane_id>|--pane ID|--current] --direction right|down [--ratio FLOAT] [--cwd PATH] [--env KEY=VALUE] [--focus] [--no-focus]
 herdr pane swap --direction left|right|up|down [--pane ID|--current]
@@ -222,6 +227,8 @@ herdr pane move <pane_id> --new-tab [--workspace ID] [--label TEXT] [--focus|--n
 herdr pane move <pane_id> --new-workspace [--label TEXT] [--tab-label TEXT] [--focus|--no-focus]
 herdr pane close <pane_id>
 ```
+
+`pane float` はタイルペインをフローティングペインにします。`--off` を付けると、フローティングペインを分割レイアウトに戻します。タブ最後のタイルペインはフローティングにできません。`pane pin` は、タブのフローティングレイヤーが非表示のときもフローティングペインを最前面に残します。タイルペインに対しては `pane_not_floating` エラーを返します。`pane new-floating` は、アクティブなタブまたは `--tab` のタブにシェルを実行する新しいフローティングペインを開きます。`pane float-move` は `--cells` の分だけフローティングペインを移動します（既定は 4 列または 2 行）。`pane resize` は右枠または下枠を動かしてフローティングペインのサイズを変えます。`tab floating` はタブのフローティングレイヤーを表示または非表示にします。`--create` を付けると、空のレイヤーを表示するときにフローティングペインを開きます。フローティングペインの JSON は、`.floating` に固定状態、表示状態、タブ領域の千分率で表した位置とサイズを含みます。
 
 `--current` を受け付けるペインコマンドは、Herdr ペイン内から実行した場合、呼び出し元の `HERDR_PANE_ID` を使います。`pane split` では、明示したペイン ID または `--pane ID` がそのペインを分割します。対象を省略すると `HERDR_PANE_ID` があれば呼び出し元ペインを、なければフォーカス中のペインを使います。`--current` は呼び出し元ペインを必須とし、`HERDR_PANE_ID` がない場合はエラーになります。分割レスポンスでは、新しいペイン ID は `.result.pane.pane_id` にあります。
 
