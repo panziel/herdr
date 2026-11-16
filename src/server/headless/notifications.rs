@@ -338,6 +338,10 @@ impl HeadlessServer {
                 self.send_to_foreground_client(ServerMessage::Clipboard { data });
                 false
             }
+            AppEvent::PaneExitStatus { .. } => {
+                self.app.handle_internal_event(ev);
+                true
+            }
             AppEvent::StateChanged { pane_id, agent, .. } => {
                 // Capture toast before handling.
                 let toast_before = self.app.state.toast.clone();

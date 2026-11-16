@@ -1,4 +1,5 @@
 use super::*;
+use ratatui::style::Color;
 
 const TAB_SCROLL_BUTTON_WIDTH: u16 = 3;
 const MIN_TAB_STRIP_WIDTH: u16 =
@@ -35,7 +36,6 @@ pub(crate) fn render_tab_bar(
         .iter()
         .copied()
         .fold(0_u16, u16::saturating_add)
-        .saturating_add(tabs.len().saturating_sub(1).min(u16::MAX as usize) as u16)
         .saturating_add(new_tab_width);
     let overflow =
         desired_total > content.width && (!mouse_chrome || content.width >= MIN_TAB_STRIP_WIDTH);
@@ -100,21 +100,25 @@ pub(crate) fn render_tab_bar(
             break;
         }
         let rect = Rect::new(x, area.y, width, 1);
-        let style = if tab.focused {
-            let base = Style::default()
-                .fg(panel_contrast_fg(palette))
-                .bg(palette.accent);
-            if tab.custom_label {
-                base.add_modifier(Modifier::BOLD)
-            } else {
-                base
-            }
-        } else if tab.custom_label {
-            Style::default().fg(palette.overlay1).bg(palette.surface0)
+        let background = if tab.focused {
+            palette.accent
+        } else if palette.surface0 == Color::Reset {
+            palette.surface1
         } else {
-            Style::default().fg(palette.overlay0).bg(palette.surface0)
+            palette.surface0
         };
-        let padding = width.saturating_sub(display_width(&name));
+        let style = if tab.focused {
+            palette
+                .selected_style(PaletteEmphasis::Normal)
+                .patch(tab_contrast_style(palette.accent, palette.panel_bg))
+        } else {
+            palette
+                .unselected_style(PaletteEmphasis::Muted)
+                .bg(background)
+                .remove_modifier(Modifier::DIM)
+        };
+        let body_width = width.saturating_sub(1 + u16::from(width > 1));
+        let padding = body_width.saturating_sub(display_width(&name));
         let left = padding / 2;
         let text = format!(
             "{empty:left$}{name}{empty:right_padding$}",
@@ -122,11 +126,36 @@ pub(crate) fn render_tab_bar(
             left = left as usize,
             right_padding = padding.saturating_sub(left) as usize,
         );
-        put_text(buffer, rect.x, rect.y, rect.width, &text, style);
+        put_text(
+            buffer,
+            rect.x,
+            rect.y,
+            1,
+            "",
+            tab_contrast_style(background, palette.panel_bg),
+        );
+        put_text(
+            buffer,
+            rect.x.saturating_add(1),
+            rect.y,
+            body_width,
+            &text,
+            style,
+        );
+        if width > 1 {
+            put_text(
+                buffer,
+                rect.right() - 1,
+                rect.y,
+                1,
+                "",
+                Style::default().fg(background).bg(palette.panel_bg),
+            );
+        }
         hits.tabs.push((rect, tab.tab_id.clone()));
         first_visible.get_or_insert(index);
         last_visible = Some(index);
-        x = x.saturating_add(width + 1);
+        x = x.saturating_add(width);
         if width < desired {
             break;
         }
@@ -221,6 +250,34 @@ pub(crate) fn render_tab_bar(
         }
     }
     render_tab_bar_status(buffer, area, snapshot, palette);
+}
+
+fn tab_contrast_style(background: Color, panel_background: Color) -> Style {
+    if panel_background == Color::Reset {
+        // Reset 在前景色位置代表终端默认文字色；反色保留默认背景色的语义。
+        Style::default()
+            .fg(background)
+            .bg(Color::Reset)
+            .add_modifier(Modifier::REVERSED)
+    } else {
+        Style::default().fg(panel_background).bg(background)
+    }
+}
+
+pub(crate) fn restore_tab_contrast(buffer: &mut Buffer, chrome: &Buffer, hits: &ShellHitMap) {
+    for (rect, _) in &hits.tabs {
+        for x in rect.x..rect.right() {
+            if let (Some(cell), Some(original)) =
+                (buffer.cell_mut((x, rect.y)), chrome.cell((x, rect.y)))
+            {
+                if cell.symbol() == original.symbol()
+                    && cell.style() == original.style().add_modifier(Modifier::DIM)
+                {
+                    cell.set_style(original.style().remove_modifier(Modifier::DIM));
+                }
+            }
+        }
+    }
 }
 
 pub(crate) fn tab_bar_status_width(snapshot: &ClientShellSnapshot) -> u16 {
@@ -337,7 +394,7 @@ fn centered_tab_scroll(focused: usize, widths: &[u16], available: u16) -> usize 
             .enumerate()
             .skip(start)
             .take(focused.saturating_sub(start))
-            .fold(0u16, |width, (_, tab)| width.saturating_add(tab + 1));
+            .fold(0u16, |width, (_, tab)| width.saturating_add(tab));
         if before >= available {
             continue;
         }
@@ -361,7 +418,7 @@ fn max_tab_scroll(widths: &[u16], available: u16) -> usize {
     // Keep the longest fully visible suffix, not merely a sliver of the last tab.
     // An oversized last tab must still be reachable at the start of the strip.
     for width in preceding.iter().rev() {
-        let required = used + 1 + u32::from(*width);
+        let required = used + u32::from(*width);
         if required > u32::from(available) {
             break;
         }
@@ -372,10 +429,16 @@ fn max_tab_scroll(widths: &[u16], available: u16) -> usize {
 }
 
 fn tab_label(tab: &ClientShellTab) -> String {
+    let label = match tab.label.parse::<usize>().ok() {
+        Some(number) if !tab.custom_label || number == tab.number => {
+            format!("Tab #{}", tab.number)
+        }
+        _ => tab.label.clone(),
+    };
     if tab.zoomed {
-        format!("{} Z", tab.label)
+        format!("{label} Z")
     } else {
-        tab.label.clone()
+        label
     }
 }
 
@@ -384,13 +447,13 @@ mod tests {
     use super::max_tab_scroll;
 
     #[test]
-    fn trailing_scroll_limit_accounts_for_full_widths_and_separators() {
+    fn trailing_scroll_limit_accounts_for_tab_widths() {
         for (widths, available, expected) in [
             (&[][..], 0, 0),
             (&[8, 13][..], 0, 1),
             (&[8, 13][..], 1, 1),
             (&[8, 13][..], 12, 1),
-            (&[8, 13][..], 21, 1),
+            (&[8, 13][..], 21, 0),
             (&[8, 13][..], 22, 0),
             (&[8, 13][..], 30, 0),
             (&[8, u16::MAX][..], u16::MAX, 1),

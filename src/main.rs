@@ -295,7 +295,7 @@ const DEFAULT_CONFIG: &str = r##"# herdr configuration
 # "auto" draws them only for split panes, "always" also frames a lone pane
 # (only while pane_outer_borders is enabled), "off" disables them.
 # Legacy booleans still parse: true = "auto", false = "off".
-# pane_borders = "auto"
+# pane_borders = "always"
 
 # Draw borders along the outside edge of the pane area.
 # Disable for tmux-style internal splitters without an outside frame.
@@ -363,6 +363,9 @@ const DEFAULT_CONFIG: &str = r##"# herdr configuration
 # [ui.sidebar.spaces]
 # Blank rows between space entries. Set to 1 to restore the previous spacing.
 # row_gap = 0
+# Card style: plain (token list), compact (3-row rounded card), full (4-row rounded card,
+# degrades to 3 rows without a branch). Rounded cards highlight the border on selection.
+# card_style = "plain"
 # rows = [["state_icon", "workspace"], ["branch", "git_status"]]
 
 # Background notification popup delivery

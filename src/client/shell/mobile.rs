@@ -11,39 +11,90 @@ use super::*;
 
 const MOBILE_BUTTON_WIDTH: u16 = 10;
 
+/// 圆角卡片高度（上下边框 + 一行内容）。
+const MOBILE_CARD_HEIGHT: u16 = 3;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum MobileItemKind {
+    /// 压线分区标题。
+    Section,
+    /// 圆角卡片对象（agents / spaces / tabs），与侧栏 compact 卡片同款。
+    Card,
+    /// 普通行（机器、动作、菜单）。
+    Row,
+}
+
 struct MobileItem {
+    kind: MobileItemKind,
     lines: Vec<Line<'static>>,
+    /// 条目上方的空行数：卡片之间与分区之前留白，动作/菜单词条紧贴分区。
+    gap: u16,
     background: Color,
     target: Option<ClientMobileTarget>,
 }
 
 impl MobileItem {
-    fn section(label: impl Into<String>, palette: &Palette) -> Self {
+    fn row(
+        lines: Vec<Line<'static>>,
+        background: Color,
+        target: Option<ClientMobileTarget>,
+    ) -> Self {
         Self {
-            lines: vec![Line::from(Span::styled(
-                format!(" {} ", label.into()),
-                Style::default()
-                    .fg(palette.overlay1)
-                    .bg(palette.panel_bg)
-                    .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
-            ))],
+            kind: MobileItemKind::Row,
+            lines,
+            gap: 0,
+            background,
+            target,
+        }
+    }
+
+    fn card(lines: Vec<Line<'static>>, background: Color, target: ClientMobileTarget) -> Self {
+        Self {
+            kind: MobileItemKind::Card,
+            lines,
+            gap: 0,
+            background,
+            target: Some(target),
+        }
+    }
+
+    fn section(label: &str, content_width: u16, palette: &Palette) -> Self {
+        let head = format!("── {label} ");
+        let fill = "─"
+            .repeat(usize::from(content_width).saturating_sub(usize::from(display_width(&head))));
+        Self {
+            kind: MobileItemKind::Section,
+            lines: vec![Line::from(vec![
+                Span::styled(
+                    head,
+                    Style::default()
+                        .fg(palette.subtext0)
+                        .bg(palette.panel_bg)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    fill,
+                    Style::default().fg(palette.surface1).bg(palette.panel_bg),
+                ),
+            ])],
+            gap: 0,
             background: palette.panel_bg,
             target: None,
         }
     }
 
     fn action(label: &'static str, target: ClientMobileTarget, palette: &Palette) -> Self {
-        Self {
-            lines: vec![Line::from(Span::styled(
+        Self::row(
+            vec![Line::from(Span::styled(
                 label,
                 Style::default()
                     .fg(palette.accent)
                     .bg(palette.panel_bg)
                     .add_modifier(Modifier::BOLD),
             ))],
-            background: palette.panel_bg,
-            target: Some(target),
-        }
+            palette.panel_bg,
+            Some(target),
+        )
     }
 }
 
@@ -199,16 +250,6 @@ fn render_header_button(
             ),
             Style::default().fg(palette.red).bg(palette.surface0),
         );
-    }
-}
-
-fn mobile_endpoint_state(status: ClientEndpointStatus) -> &'static str {
-    match status {
-        ClientEndpointStatus::Connecting => "connecting",
-        ClientEndpointStatus::Online => "online",
-        ClientEndpointStatus::Reconnecting => "reconnecting",
-        ClientEndpointStatus::Attention => "attention",
-        ClientEndpointStatus::Disabled => "disabled",
     }
 }
 
@@ -444,13 +485,17 @@ pub(super) fn render_mobile_switcher(
         selected_workspace_id,
         viewport.width.saturating_sub(1),
     );
-    let total_rows = items.iter().map(|item| item.lines.len()).sum::<usize>();
+    let total_rows = items
+        .iter()
+        .map(|item| item.gap.saturating_add(item.lines.len() as u16) as usize)
+        .sum::<usize>();
     let max_scroll = total_rows.saturating_sub(usize::from(viewport.height));
     *scroll = (*scroll).min(max_scroll);
     if *reveal_workspace {
         if let Some(selected_workspace_id) = selected_workspace_id {
-            let mut start = 0usize;
+            let mut document_row = 0usize;
             for item in &items {
+                let start = document_row.saturating_add(usize::from(item.gap));
                 let end = start.saturating_add(item.lines.len());
                 if matches!(
                     item.target.as_ref(),
@@ -468,7 +513,7 @@ pub(super) fn render_mobile_switcher(
                     }
                     break;
                 }
-                start = end;
+                document_row = end;
             }
         }
         *reveal_workspace = false;
@@ -495,7 +540,7 @@ pub(super) fn render_mobile_switcher(
     let viewport_end = viewport_start.saturating_add(usize::from(viewport.height));
     let mut document_row = 0usize;
     for item in items {
-        let item_start = document_row;
+        let item_start = document_row.saturating_add(usize::from(item.gap));
         let item_end = item_start.saturating_add(item.lines.len());
         let visible_start = item_start.max(viewport_start);
         let visible_end = item_end.min(viewport_end);
@@ -572,6 +617,99 @@ fn render_close_button(buffer: &mut Buffer, area: Rect, palette: &Palette) {
     }
 }
 
+/// 把一张卡片画进临时缓冲再拆成文本行：条目滚动管线只认行，
+/// 卡片布局则直接复用侧栏的渲染函数，两边不各画一套。
+fn card_lines(
+    width: u16,
+    config: &ClientShellConfig,
+    stale: bool,
+    draw: impl FnOnce(&mut Buffer, Rect),
+) -> Vec<Line<'static>> {
+    let area = Rect::new(0, 0, width, MOBILE_CARD_HEIGHT);
+    let mut scratch = Buffer::empty(area);
+    draw(&mut scratch, area);
+    if stale {
+        scratch.set_style(
+            area,
+            Style::default()
+                .fg(config.palette.overlay0)
+                .add_modifier(Modifier::DIM),
+        );
+    }
+    (0..area.height)
+        .map(|y| {
+            let mut spans: Vec<Span<'static>> = Vec::new();
+            for x in 0..area.width {
+                let cell = &scratch[(x, y)];
+                let symbol = cell.symbol();
+                if symbol.is_empty() {
+                    continue;
+                }
+                let style = Style::default().fg(cell.fg).add_modifier(cell.modifier);
+                match spans.last_mut() {
+                    Some(last) if last.style == style => last.content.to_mut().push_str(symbol),
+                    _ => spans.push(Span::styled(symbol.to_owned(), style)),
+                }
+            }
+            Line::from(spans)
+        })
+        .collect()
+}
+
+/// Tab 卡片：tab 内的 agent 名压上边框，框里是 tab 名与右对齐状态。
+fn render_tab_card(
+    buffer: &mut Buffer,
+    rect: Rect,
+    title: &str,
+    label: &str,
+    status: crate::api::schema::AgentStatus,
+    focused: bool,
+    config: &ClientShellConfig,
+) {
+    if !super::sidebar_card::card_fits(rect) {
+        return;
+    }
+    let palette = &config.palette;
+    let border = if focused {
+        palette.accent
+    } else {
+        palette.overlay0
+    };
+    super::sidebar_card::draw_card_border(buffer, rect, border);
+    super::sidebar_card::draw_card_border_title(buffer, rect, title, border);
+    let inner_left = rect.x + 2;
+    let inner_right = rect.right().saturating_sub(2);
+    let y = rect.y + 1;
+    let state_text = super::agent_sidebar::status_badge_text(status);
+    let state_width = display_width(state_text);
+    let show_state = inner_right.saturating_sub(inner_left) >= state_width.saturating_add(2);
+    let label_right = if show_state {
+        inner_right.saturating_sub(state_width.saturating_add(1))
+    } else {
+        inner_right
+    };
+    put_segment(
+        buffer,
+        inner_left,
+        y,
+        label_right,
+        label,
+        Style::default()
+            .fg(palette.text)
+            .add_modifier(Modifier::BOLD),
+    );
+    if show_state {
+        put_segment(
+            buffer,
+            inner_right.saturating_sub(state_width),
+            y,
+            inner_right,
+            state_text,
+            Style::default().fg(status_color(status, palette)),
+        );
+    }
+}
+
 fn mobile_items(
     snapshot: &ClientShellSnapshot,
     endpoints: &[ClientShellEndpoint],
@@ -583,12 +721,12 @@ fn mobile_items(
     let palette = &config.palette;
     let mut items = Vec::new();
     if endpoints.len() > 1 {
-        items.push(MobileItem::section("machines", palette));
+        items.push(MobileItem::section("machines", content_width, palette));
         for endpoint in endpoints {
             let background = palette.panel_bg;
             let (symbol, state, color) = endpoint_status_presentation(endpoint.status, palette);
-            items.push(MobileItem {
-                lines: vec![
+            items.push(MobileItem::row(
+                vec![
                     Line::from(vec![
                         Span::styled("  ", Style::default().bg(background)),
                         Span::styled(symbol, Style::default().fg(color).bg(background)),
@@ -606,8 +744,8 @@ fn mobile_items(
                     )),
                 ],
                 background,
-                target: Some(ClientMobileTarget::Machine(endpoint.endpoint_id.clone())),
-            });
+                Some(ClientMobileTarget::Machine(endpoint.endpoint_id.clone())),
+            ));
         }
     }
     let agents = super::aggregate_navigation::aggregate_agent_rows(
@@ -620,134 +758,55 @@ fn mobile_items(
         let title = agent_view_label
             .map(|label| format!("agents · {label}"))
             .unwrap_or_else(|| "agents".to_owned());
-        items.push(MobileItem::section(title, palette));
+        items.push(MobileItem::section(&title, content_width, palette));
         if agents.is_empty() {
-            items.push(MobileItem {
-                lines: vec![Line::from(Span::styled(
+            items.push(MobileItem::row(
+                vec![Line::from(Span::styled(
                     "  no matching agents",
                     Style::default()
                         .fg(palette.overlay0)
                         .bg(palette.panel_bg)
                         .add_modifier(Modifier::DIM),
                 ))],
-                background: palette.panel_bg,
-                target: None,
-            });
+                palette.panel_bg,
+                None,
+            ));
         }
         for row in agents {
             let endpoint = row.endpoint;
-            let agent = row.agent;
-            let workspace = endpoint
-                .snapshot
-                .workspaces
-                .iter()
-                .find(|workspace| workspace.workspace_id == agent.workspace_id);
-            let tab = endpoint
-                .snapshot
-                .tabs
-                .iter()
-                .find(|tab| tab.tab_id == agent.tab_id);
-            let agent_label = agent
-                .display_agent
-                .as_deref()
-                .or(agent.name.as_deref())
-                .or(agent.agent.as_deref())
-                .unwrap_or("agent");
-            let primary = workspace
-                .map(|workspace| workspace.label.as_str())
-                .unwrap_or(agent_label);
-            let mut detail = Vec::new();
-            let workspace_tab_count = endpoint
-                .snapshot
-                .tabs
-                .iter()
-                .filter(|candidate| candidate.workspace_id == agent.workspace_id)
-                .count();
-            if let Some(tab) = tab.filter(|tab| tab.custom_label || workspace_tab_count > 1) {
-                detail.push(tab.label.clone());
-            }
-            let status_key = status_text(agent.agent_status);
-            detail.push(
-                agent
-                    .state_labels
-                    .iter()
-                    .find(|(key, _)| key == status_key)
-                    .map(|(_, label)| label.clone())
-                    .unwrap_or_else(|| {
-                        if agent.agent_status == crate::api::schema::AgentStatus::Unknown {
-                            "idle".to_owned()
-                        } else {
-                            status_key.to_owned()
-                        }
-                    }),
-            );
-            detail.push(agent_label.to_owned());
-            if endpoint.stale() {
-                detail.push(mobile_endpoint_state(endpoint.status).to_owned());
-            }
-            let background = if endpoint.endpoint_id == active_endpoint_id && agent.focused {
-                palette.surface_dim
-            } else {
-                palette.panel_bg
+            // 机器名只在多机时跟在名称后，单机省略（同 AgentCardContent::context）。
+            let machine = (endpoints.len() > 1).then_some(endpoint.label);
+            let Some(mut card) = super::agent_sidebar::agent_row(
+                endpoint.snapshot,
+                &row.agent.pane_id,
+                config,
+                machine,
+            ) else {
+                continue;
             };
-            let foreground = if endpoint.stale() {
-                palette.overlay0
-            } else {
-                palette.text
-            };
-            let dim = if endpoint.stale() {
-                Modifier::DIM
-            } else {
-                Modifier::empty()
-            };
-            items.push(MobileItem {
-                lines: vec![
-                    Line::from(vec![
-                        Span::styled("  ", Style::default().bg(background)),
-                        Span::styled(
-                            status_icon(agent.agent_status, config.status_indicators),
-                            Style::default()
-                                .fg(if endpoint.stale() {
-                                    palette.overlay0
-                                } else {
-                                    status_color(agent.agent_status, palette)
-                                })
-                                .bg(background)
-                                .add_modifier(dim),
-                        ),
-                        Span::styled(" ", Style::default().bg(background)),
-                        Span::styled(
-                            crate::ui::truncate_end(
-                                &format!("{} · {primary}", endpoint.label),
-                                usize::from(content_width.saturating_sub(5)),
-                            ),
-                            Style::default()
-                                .fg(foreground)
-                                .bg(background)
-                                .add_modifier(Modifier::BOLD | dim),
-                        ),
-                    ]),
-                    Line::from(Span::styled(
-                        crate::ui::truncate_end(
-                            &format!("  {}", detail.join(" · ")),
-                            usize::from(content_width),
-                        ),
-                        Style::default()
-                            .fg(palette.overlay0)
-                            .bg(background)
-                            .add_modifier(dim),
-                    )),
-                ],
-                background,
-                target: Some(ClientMobileTarget::Agent {
-                    endpoint_id: endpoint.endpoint_id.clone(),
-                    pane_id: agent.pane_id.clone(),
-                }),
+            card.focused &= endpoint.endpoint_id == active_endpoint_id;
+            let lines = card_lines(content_width, config, endpoint.stale(), |buffer, rect| {
+                super::agent_sidebar::render_agent_card(
+                    buffer,
+                    rect,
+                    &card,
+                    config,
+                    SidebarCardStyle::Compact,
+                    &mut ShellHitMap::default(),
+                );
             });
+            items.push(MobileItem::card(
+                lines,
+                palette.panel_bg,
+                ClientMobileTarget::Agent {
+                    endpoint_id: endpoint.endpoint_id.clone(),
+                    pane_id: row.agent.pane_id.clone(),
+                },
+            ));
         }
     }
 
-    items.push(MobileItem::section("spaces", palette));
+    items.push(MobileItem::section("spaces", content_width, palette));
     items.push(MobileItem::action(
         "  + new workspace",
         ClientMobileTarget::NewWorkspace,
@@ -761,126 +820,35 @@ fn mobile_items(
             let selected = selected_workspace_id.is_some_and(|target| {
                 target.matches(endpoint.endpoint_id, &workspace.workspace_id)
             });
-            let background = if selected {
-                if palette.surface0 == ratatui::style::Color::Reset {
-                    palette.active_row_bg
-                } else {
-                    palette.surface0
-                }
-            } else if endpoint.endpoint_id == active_endpoint_id && workspace.focused {
-                if selected_workspace_id.is_some()
-                    && palette.surface0 == ratatui::style::Color::Reset
-                {
-                    palette.panel_bg
-                } else {
-                    palette.surface_dim
-                }
-            } else {
-                palette.panel_bg
-            };
-            let connector = if entry.indented {
-                if entry.last_child {
-                    "└─ "
-                } else {
-                    "├─ "
-                }
-            } else {
-                ""
-            };
-            let name = if entry.indented && !workspace.custom_label {
-                workspace
-                    .branch
-                    .as_deref()
-                    .and_then(|branch| branch.strip_prefix("worktree/").or(Some(branch)))
-                    .unwrap_or(&workspace.label)
-            } else {
-                &workspace.label
-            };
-            let branch = workspace.branch.as_deref().unwrap_or("shell");
-            let detail_prefix = if entry.indented {
-                if entry.last_child {
-                    "       "
-                } else {
-                    "  │    "
-                }
-            } else {
-                "  "
-            };
-            let dim = if endpoint.stale() {
-                Modifier::DIM
-            } else {
-                Modifier::empty()
-            };
-            let foreground = if endpoint.stale() {
-                palette.overlay0
-            } else {
-                palette.text
-            };
-            let status = if endpoint.stale() {
-                palette.overlay0
-            } else {
-                status_color(workspace.agent_status, palette)
-            };
-            let stale_detail = if endpoint.stale() {
-                format!(" · {}", mobile_endpoint_state(endpoint.status))
-            } else {
-                String::new()
-            };
-            items.push(MobileItem {
-                lines: vec![
-                    Line::from(vec![
-                        Span::styled(
-                            format!("  {connector}"),
-                            Style::default()
-                                .fg(palette.overlay0)
-                                .bg(background)
-                                .add_modifier(dim),
-                        ),
-                        Span::styled(
-                            status_icon(workspace.agent_status, config.status_indicators),
-                            Style::default().fg(status).bg(background).add_modifier(dim),
-                        ),
-                        Span::styled(" ", Style::default().bg(background)),
-                        Span::styled(
-                            crate::ui::truncate_end(
-                                &format!("{} · {name}", endpoint.label),
-                                usize::from(content_width.saturating_sub(if entry.indented {
-                                    8
-                                } else {
-                                    5
-                                })),
-                            ),
-                            Style::default()
-                                .fg(foreground)
-                                .bg(background)
-                                .add_modifier(Modifier::BOLD | dim),
-                        ),
-                    ]),
-                    Line::from(Span::styled(
-                        crate::ui::truncate_end(
-                            &format!(
-                                "{detail_prefix}{branch} · {}{stale_detail}",
-                                compact_tab_status(endpoint.snapshot, workspace)
-                            ),
-                            usize::from(content_width),
-                        ),
-                        Style::default()
-                            .fg(palette.overlay0)
-                            .bg(background)
-                            .add_modifier(dim),
-                    )),
-                ],
-                background,
-                target: Some(ClientMobileTarget::Workspace {
+            let focused = endpoint.endpoint_id == active_endpoint_id && workspace.focused;
+            let lines = card_lines(content_width, config, endpoint.stale(), |buffer, rect| {
+                super::render::render_workspace_card(
+                    buffer,
+                    rect,
+                    workspace.agent_status,
+                    config.status_indicators,
+                    workspace,
+                    entry.indented,
+                    focused,
+                    selected,
+                    false,
+                    &config.palette,
+                    SidebarCardStyle::Compact,
+                );
+            });
+            items.push(MobileItem::card(
+                lines,
+                palette.panel_bg,
+                ClientMobileTarget::Workspace {
                     endpoint_id: endpoint.endpoint_id.clone(),
                     workspace_id: workspace.workspace_id.clone(),
-                }),
-            });
+                },
+            ));
         }
     }
 
     if let Some(workspace_id) = snapshot.focused_workspace_id.as_deref() {
-        items.push(MobileItem::section("tabs", palette));
+        items.push(MobileItem::section("tabs", content_width, palette));
         items.push(MobileItem::action(
             "  + new tab",
             ClientMobileTarget::NewTab,
@@ -892,50 +860,69 @@ fn mobile_items(
             .filter(|tab| tab.workspace_id == workspace_id)
             .enumerate()
         {
-            let background = if tab.focused {
-                palette.surface_dim
-            } else {
-                palette.panel_bg
-            };
             let label = if tab.custom_label {
                 format!("{} · {}", index + 1, tab.label)
             } else {
                 format!("tab {}", tab.label)
             };
-            let label = format!(
-                "  {}",
-                crate::ui::truncate_end(&label, usize::from(content_width.saturating_sub(3)),)
-            );
-            items.push(MobileItem {
-                lines: vec![Line::from(Span::styled(
-                    label,
-                    Style::default()
-                        .fg(palette.text)
-                        .bg(background)
-                        .add_modifier(Modifier::BOLD),
-                ))],
-                background,
-                target: Some(ClientMobileTarget::Tab {
+            let title = snapshot
+                .agents
+                .iter()
+                .filter(|agent| agent.tab_id == tab.tab_id)
+                .filter_map(|agent| {
+                    agent
+                        .display_agent
+                        .as_deref()
+                        .or(agent.name.as_deref())
+                        .or(agent.agent.as_deref())
+                })
+                .collect::<Vec<_>>()
+                .join(" · ");
+            let lines = card_lines(content_width, config, false, |buffer, rect| {
+                render_tab_card(
+                    buffer,
+                    rect,
+                    &title,
+                    &label,
+                    tab.agent_status,
+                    tab.focused,
+                    config,
+                );
+            });
+            items.push(MobileItem::card(
+                lines,
+                palette.panel_bg,
+                ClientMobileTarget::Tab {
                     endpoint_id: active_endpoint_id.clone(),
                     tab_id: tab.tab_id.clone(),
-                }),
-            });
+                },
+            ));
         }
     }
 
-    items.push(MobileItem::section("menu", palette));
+    items.push(MobileItem::section("menu", content_width, palette));
     for (index, (label, _)) in super::global_menu::global_menu_items(snapshot)
         .into_iter()
         .enumerate()
     {
-        items.push(MobileItem {
-            lines: vec![Line::from(Span::styled(
+        items.push(MobileItem::row(
+            vec![Line::from(Span::styled(
                 format!("  {label}"),
                 Style::default().fg(palette.overlay1).bg(palette.panel_bg),
             ))],
-            background: palette.panel_bg,
-            target: Some(ClientMobileTarget::Menu(index)),
-        });
+            palette.panel_bg,
+            Some(ClientMobileTarget::Menu(index)),
+        ));
+    }
+
+    // 间距节奏：卡片之间与分区之前留一行，动作/菜单词条紧贴分区。
+    let mut prev: Option<MobileItemKind> = None;
+    for item in &mut items {
+        item.gap = match (item.kind, prev) {
+            (MobileItemKind::Row, _) | (_, Some(MobileItemKind::Section)) | (_, None) => 0,
+            _ => 1,
+        };
+        prev = Some(item.kind);
     }
     items
 }

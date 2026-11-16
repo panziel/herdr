@@ -280,6 +280,7 @@ active_row_bg = "#1e1e2e"
 selection_bg = "#313244"
 panel_bg = "reset"
 accent = "#a6e3a1"
+hover_border = "#d75f00"
 green = "#a6e3a1"
 blue = "#89b4fa"
 red = "#f38ba8"
@@ -287,6 +288,8 @@ yellow = "#f9e2af"
 ```
 
 `sidebar_bg` optionally gives the desktop sidebar its own background. When omitted, the sidebar keeps the host terminal background. `active_row_bg` changes the active Space and focused Agent row background without affecting separators or scrollbar tracks. `selection_bg` changes the Navigate-mode cursor row background in the sidebar.
+
+`hover_border` controls the mouse-hover border for unfocused panes and for Space and Agent cards. Its default is zellij's ANSI orange (index 166); set it independently when that color does not fit the rest of the theme.
 
 Color values accept hex, named colors, `rgb(r,g,b)`, or reset aliases like `reset`, `default`, `none`, and `transparent`.
 
@@ -311,7 +314,7 @@ The active palette is applied in this order: built-in theme, `[theme.custom]`, t
 
 The sidebar is the main Herdr dashboard. Search `ui.` in the [Config reference](/docs/config-reference/) for sizing, collapsed mode, Agent panel ordering, mouse behavior, pane borders, and other presentation settings.
 
-`ui.pane_borders` accepts `"auto"` (the default, borders only for split panes), `"always"` (also frame a single pane), or `"off"`. A single-pane frame requires `ui.pane_outer_borders = true`, because all its edges are outer edges. Existing boolean values remain valid: `true` means `"auto"` and `false` means `"off"`.
+`ui.pane_borders` accepts `"always"` (the default, also frame a single pane), `"auto"` (borders only for split panes), or `"off"`. A single-pane frame requires `ui.pane_outer_borders = true`, because all its edges are outer edges. Existing boolean values remain valid: `true` means `"auto"` and `false` means `"off"`.
 
 Set `tab_bar_position = "bottom"` under `[ui]` to place the desktop tab row below the terminal panes. Prefix, Navigate, Copy, and Resize mode bars temporarily replace the bottom tab row while active. The default is `"top"`.
 
@@ -366,6 +369,7 @@ The expanded desktop sidebar renders each inner array in `rows` as one line. The
 ```toml
 [ui.sidebar.agents]
 row_gap = 0
+card_style = "plain"
 rows = [
   ["state_icon", "machine", "workspace", "tab"],
   ["agent"],
@@ -373,6 +377,7 @@ rows = [
 
 [ui.sidebar.spaces]
 row_gap = 0
+card_style = "plain"
 rows = [
   ["state_icon", "workspace"],
   ["branch", "git_status"],
@@ -435,6 +440,10 @@ The first matching rule wins. Its specified style fields override the occurrence
 Rules work with text-valued built-ins and custom `$name` tokens in Agent rows, `rows_by_agent` overrides, and Space rows. Custom tokens match their reported value: `$load` reporting `"90"` selects red and bold above, `"60"` selects yellow, and `"90%"` keeps white. Unreported tokens still disappear. `state_icon` and composite `git_status` accept fixed styles only, not rules. Unknown conditions and malformed rules are rejected when loading config; regex, fuzzy matching, and scripts are not supported.
 
 `row_gap` controls the blank terminal rows between entries, independently for the Agent and Space panels. It defaults to `0`, which packs entries together; set it to `1` to restore the previous spacing. It does not add spacing between the content lines declared in `rows`. Consecutive indented worktree children remain packed as one Space group.
+
+`card_style` chooses the Space sidebar card shape: `plain` (default) keeps the token-template list above with background-fill selection; `compact` draws each Space as a 3-row rounded card (name on the content row, branch on the top border with a left margin, and no title when there is no branch); `full` draws a 4-row rounded card with a separate branch row and degrades to 3 rows when there is no branch. No placeholder is shown for a missing branch. In `compact` and `full` the selection/focus highlight is the card border in the accent color rather than a background fill, and hovering an unselected card tints its border like pane hover; the content is fixed (the `rows` template is ignored), and indented worktree children render as their own cards.
+
+`[ui.sidebar.agents]` accepts the same `card_style` values. `compact` draws each agent as a 3-row card with the space name on the top border (with a left margin) and the status icon, agent name, ` · ` plus machine/tab context when shown on the content row, and the status text right-aligned; `full` draws a 4-row card with the location (machine, workspace, and tab when shown) on its own row. The focused agent gets the accent border, and hovering another card tints its border. Agent cards also ignore `rows` and `rows_by_agent`. In every style the status text (`running`, `input`, `done`, `idle`, `unknown`) uses only the status color, without a background.
 
 Override the complete Agent layout for a known agent under `rows_by_agent`:
 

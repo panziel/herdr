@@ -518,7 +518,7 @@ pub(super) fn render_expanded(
 
     let footer_y = workspace_area.bottom().saturating_sub(1);
     if config.mouse_capture {
-        let label = format!(" new · {}", active_endpoint_label(state));
+        let label = format!(" + · {}", active_endpoint_label(state));
         hits.new_workspace = Rect::new(
             workspace_area.x,
             footer_y,
@@ -534,7 +534,7 @@ pub(super) fn render_expanded(
             Style::default().fg(palette.overlay0),
         );
         let attention = active_snapshot.is_some_and(super::global_menu::global_menu_attention);
-        let width = if attention { 8 } else { 6 }.min(workspace_area.width);
+        let width = if attention { 4 } else { 2 }.min(workspace_area.width);
         hits.global_launcher = Rect::new(
             workspace_area.right().saturating_sub(width),
             footer_y,
@@ -545,7 +545,7 @@ pub(super) fn render_expanded(
             buffer,
             workspace_area,
             footer_y,
-            if attention { "● menu" } else { "menu" },
+            if attention { "● ☰" } else { "☰" },
             Style::default().fg(if attention {
                 palette.accent
             } else {

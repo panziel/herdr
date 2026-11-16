@@ -23,7 +23,7 @@ pub(super) fn render_collapsed(
             rect.width,
             &format!(
                 "{initial}{}",
-                status_icon(row.agent.status, config.status_indicators)
+                super::agent_animation::indicator_icon(row.agent.status, config.status_indicators)
             ),
             Style::default()
                 .fg(if row.stale {
@@ -39,6 +39,14 @@ pub(super) fn render_collapsed(
         );
         hits.endpoint_agents
             .push((rect, row.endpoint_id, row.agent.pane_id));
+        if !row.stale && rect.width > 1 {
+            hits.agent_indicators
+                .push(super::agent_animation::AgentIndicator {
+                    rect: Rect::new(rect.x + 1, rect.y, 1, 1),
+                    status: row.agent.status,
+                    spinner: true,
+                });
+        }
     }
 }
 
@@ -70,10 +78,12 @@ pub(super) fn render_expanded(
         config,
         agent_scroll,
         hits,
-        |row| row.agent.rows.len(),
+        |row| super::agent_sidebar::agent_row_lines(&row.agent, config.agents.card_style),
         |buffer, rect, row, hits| {
-            super::agent_sidebar::render_agent_row(buffer, rect, &row.agent, config);
+            super::agent_sidebar::render_agent_row(buffer, rect, &row.agent, config, hits);
             if row.stale {
+                hits.agent_indicators
+                    .retain(|indicator| !contains(rect, (indicator.rect.x, indicator.rect.y)));
                 buffer.set_style(
                     rect,
                     Style::default()
@@ -106,7 +116,10 @@ impl ClientShellState {
         };
         let heights = rows
             .iter()
-            .map(|row| row.agent.rows.len().max(1).min(u16::MAX as usize) as u16)
+            .map(|row| {
+                super::agent_sidebar::agent_row_lines(&row.agent, self.config.agents.card_style)
+                    .min(u16::MAX as usize) as u16
+            })
             .collect::<Vec<_>>();
         let mut gaps = vec![self.config.agents.row_gap; rows.len()];
         if let Some(last) = gaps.last_mut() {

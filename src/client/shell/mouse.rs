@@ -681,6 +681,8 @@ impl ClientShellState {
     /// Hit-test order determines which overlapping control receives the event;
     /// the sidebar toggle takes precedence over the agent scrollbar beneath it.
     pub(super) fn handle_mouse(&mut self, mouse: MouseEvent, outcome: &mut ClientShellInput) {
+        self.update_pane_hover(mouse, outcome);
+        self.update_card_hover(mouse, outcome);
         self.update_link_hover(mouse, outcome);
         let point = (mouse.column, mouse.row);
         if self.mode == ClientShellMode::Navigate
@@ -1204,6 +1206,27 @@ impl ClientShellState {
                     outcome.repaint = true;
                     return;
                 }
+                Some(ClientChromeDrag::PaneMove { source_pane_id, .. }) => {
+                    let target_pane_id = self
+                        .hits
+                        .panes
+                        .iter()
+                        .find(|hit| {
+                            !hit.popup
+                                && super::contains(hit.rect, point)
+                                && hit.pane_id != *source_pane_id
+                        })
+                        .map(|hit| hit.pane_id.clone());
+                    if let Some(ClientChromeDrag::PaneMove {
+                        target_pane_id: current,
+                        ..
+                    }) = self.chrome_drag.as_mut()
+                    {
+                        *current = target_pane_id;
+                    }
+                    outcome.repaint = true;
+                    return;
+                }
                 Some(ClientChromeDrag::Workspace { .. }) => {
                     let target = self.workspace_drop_target_at(point);
                     if let Some(ClientChromeDrag::Workspace {
@@ -1286,6 +1309,25 @@ impl ClientShellState {
                                     crate::api::schema::TabMoveParams {
                                         tab_id,
                                         insert_index: insert_index.unwrap_or_default(),
+                                    },
+                                ),
+                                outcome,
+                            );
+                        }
+                        outcome.repaint = true;
+                    }
+                    ClientChromeDrag::PaneMove {
+                        source_pane_id,
+                        target_pane_id,
+                    } => {
+                        if let Some(target_pane_id) = target_pane_id {
+                            self.push_endpoint_method(
+                                crate::api::schema::Method::PaneSwap(
+                                    crate::api::schema::PaneSwapParams {
+                                        pane_id: None,
+                                        direction: None,
+                                        source_pane_id: Some(source_pane_id),
+                                        target_pane_id: Some(target_pane_id),
                                     },
                                 ),
                                 outcome,
@@ -1731,7 +1773,9 @@ impl ClientShellState {
                     rename.input.clear();
                     outcome.repaint = true;
                 }
-            } else {
+            } else if super::contains(self.hits.overlay_cancel, point)
+                || !super::contains(self.hits.overlay_popup, point)
+            {
                 self.overlay = None;
                 outcome.repaint = true;
             }
@@ -2231,6 +2275,19 @@ impl ClientShellState {
                     .find(|hit| super::contains(hit.rect, point))
                     .cloned();
                 if let Some(hit) = pane_hit {
+                    if !super::contains(hit.inner_rect, point) {
+                        self.chrome_drag = Some(ClientChromeDrag::PaneMove {
+                            source_pane_id: hit.pane_id.clone(),
+                            target_pane_id: None,
+                        });
+                        self.push_endpoint_method(
+                            crate::api::schema::Method::PaneFocus(crate::api::schema::PaneTarget {
+                                pane_id: hit.pane_id,
+                            }),
+                            outcome,
+                        );
+                        return;
+                    }
                     if hit.mouse_reporting && super::contains(hit.inner_rect, point) {
                         self.push_pane_mouse_event(&hit, mouse, mouse.modifiers, outcome);
                         self.pane_mouse_gesture = Some(ClientPaneMouseGesture {

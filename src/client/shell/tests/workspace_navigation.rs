@@ -174,32 +174,28 @@ fn navigation_highlights_only_the_preview_and_activates_on_enter() {
                 let other = workspace_rect(&state, collision, "ws_2");
                 let focused = workspace_rect(&state, &ClientEndpointId::Local, "ws_1");
                 let palette = &state.config.palette;
-                let color = if cols == 44 {
-                    palette.surface0
+                if cols == 44 {
+                    // switch 卡片语法：预览与当前焦点都是强调色边框，碰撞端点的同名工作区不高亮。
+                    assert_eq!(buffer[(selected.x, selected.y)].fg, palette.accent);
+                    assert_eq!(buffer[(focused.x, focused.y)].fg, palette.accent);
+                    assert_ne!(buffer[(other.x, other.y)].fg, palette.accent);
                 } else {
-                    palette.selection_bg
-                };
-                let color = if color == ratatui::style::Color::Reset {
-                    palette.active_row_bg
-                } else {
-                    color
-                };
-                assert_eq!(buffer[(selected.x + 2, selected.y)].bg, color);
-                assert_ne!(buffer[(other.x + 2, other.y)].bg, color);
-                assert_eq!(
-                    buffer[(focused.x + 2, focused.y)].bg,
-                    if terminal_theme {
-                        if cols == 44 {
-                            palette.panel_bg
-                        } else {
-                            palette.sidebar_bg
-                        }
-                    } else if cols == 44 {
-                        palette.surface_dim
-                    } else {
+                    let color = if palette.selection_bg == ratatui::style::Color::Reset {
                         palette.active_row_bg
-                    }
-                );
+                    } else {
+                        palette.selection_bg
+                    };
+                    assert_eq!(buffer[(selected.x + 2, selected.y)].bg, color);
+                    assert_ne!(buffer[(other.x + 2, other.y)].bg, color);
+                    assert_eq!(
+                        buffer[(focused.x + 2, focused.y)].bg,
+                        if terminal_theme {
+                            palette.sidebar_bg
+                        } else {
+                            palette.active_row_bg
+                        }
+                    );
+                }
             }
             assert_eq!(state.snapshot.as_ref().unwrap().boot_id, "boot-1");
             assert_eq!(

@@ -427,6 +427,7 @@ pub struct AgentsSidebarConfig {
     #[serde(default, deserialize_with = "deserialize_rows_by_agent")]
     pub rows_by_agent: BTreeMap<String, AgentSidebarRows>,
     pub row_gap: u16,
+    pub card_style: SidebarCardStyle,
 }
 
 impl AgentsSidebarConfig {
@@ -451,8 +452,18 @@ impl Default for AgentsSidebarConfig {
             ],
             rows_by_agent: BTreeMap::new(),
             row_gap: DEFAULT_SIDEBAR_ROW_GAP,
+            card_style: SidebarCardStyle::Plain,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SidebarCardStyle {
+    #[default]
+    Plain,
+    Compact,
+    Full,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -461,6 +472,7 @@ pub struct SpacesSidebarConfig {
     #[serde(deserialize_with = "deserialize_sidebar_rows")]
     pub rows: SpaceSidebarRows,
     pub row_gap: u16,
+    pub card_style: SidebarCardStyle,
 }
 
 impl Default for SpacesSidebarConfig {
@@ -471,6 +483,7 @@ impl Default for SpacesSidebarConfig {
                 vec![SpaceSidebarToken::Branch, SpaceSidebarToken::GitStatus],
             ],
             row_gap: DEFAULT_SIDEBAR_ROW_GAP,
+            card_style: SidebarCardStyle::Plain,
         }
     }
 }
@@ -503,6 +516,7 @@ mod tests {
         );
         assert!(config.agents.rows_by_agent.is_empty());
         assert_eq!(config.agents.row_gap, 0);
+        assert_eq!(config.agents.card_style, SidebarCardStyle::Plain);
         assert_eq!(
             config.spaces.rows,
             vec![
@@ -511,6 +525,41 @@ mod tests {
             ]
         );
         assert_eq!(config.spaces.row_gap, 0);
+        assert_eq!(config.spaces.card_style, SidebarCardStyle::Plain);
+    }
+
+    #[test]
+    fn card_style_defaults_and_parses_for_both_panels() {
+        let default: crate::config::Config = toml::from_str("").expect("empty config");
+        assert_eq!(
+            default.ui.sidebar.spaces.card_style,
+            SidebarCardStyle::Plain
+        );
+        assert_eq!(
+            default.ui.sidebar.agents.card_style,
+            SidebarCardStyle::Plain
+        );
+
+        for (text, expected) in [
+            ("plain", SidebarCardStyle::Plain),
+            ("compact", SidebarCardStyle::Compact),
+            ("full", SidebarCardStyle::Full),
+        ] {
+            let config: crate::config::Config = toml::from_str(&format!(
+                "[ui.sidebar.spaces]\ncard_style = \"{text}\"\n\
+                 [ui.sidebar.agents]\ncard_style = \"{text}\"\n"
+            ))
+            .expect("card_style parse");
+            assert_eq!(config.ui.sidebar.spaces.card_style, expected);
+            assert_eq!(config.ui.sidebar.agents.card_style, expected);
+        }
+
+        for panel in ["spaces", "agents"] {
+            assert!(toml::from_str::<crate::config::Config>(&format!(
+                "[ui.sidebar.{panel}]\ncard_style = \"round\"\n"
+            ))
+            .is_err());
+        }
     }
 
     #[test]

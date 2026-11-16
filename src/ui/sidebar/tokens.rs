@@ -150,9 +150,11 @@ pub(crate) fn space_rows(
                         SpaceSidebarToken::Workspace => {
                             Some(ResolvedTokenKind::Workspace(context.workspace.to_string()))
                         }
-                        SpaceSidebarToken::Branch if !context.suppress_git_details => context
-                            .branch
-                            .map(|branch| ResolvedTokenKind::Branch(branch.to_string())),
+                        SpaceSidebarToken::Branch if !context.suppress_git_details => {
+                            Some(ResolvedTokenKind::Branch(
+                                context.branch.unwrap_or("· 无分支").to_string(),
+                            ))
+                        }
                         SpaceSidebarToken::Branch => None,
                         SpaceSidebarToken::GitStatus if !context.suppress_git_details => context
                             .ahead_behind
@@ -283,6 +285,7 @@ rows = [[{ token = "workspace", rules = [{ equals = "long-workspace-name", fg = 
                 theme,
                 &super::super::Palette::catppuccin(),
                 width,
+                |_| {},
             );
             assert_eq!(spans.len(), 1);
             assert!(super::super::display_width(&spans[0].content) <= width);
@@ -533,6 +536,28 @@ rows = [[{ token = "$load", rules = [{ lt = 50, hide = true }] }], ["workspace"]
             vec![vec![ResolvedToken::unstyled(ResolvedTokenKind::Workspace(
                 "repo".into()
             ))]]
+        );
+    }
+
+    #[test]
+    fn default_space_rows_keep_branch_placeholder_without_git_metadata() {
+        let rows = space_rows(
+            &SpacesSidebarConfig::default(),
+            SpaceTokenContext {
+                workspace: "notes",
+                branch: None,
+                state_text: "idle",
+                ahead_behind: None,
+                tokens: &std::collections::HashMap::new(),
+                suppress_git_details: false,
+            },
+        );
+        assert_eq!(rows.len(), 2);
+        assert_eq!(
+            rows[1],
+            vec![ResolvedToken::unstyled(ResolvedTokenKind::Branch(
+                "· 无分支".into()
+            ))]
         );
     }
 

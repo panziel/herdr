@@ -169,7 +169,7 @@ fn mobile_shell_controls_remain_clickable_when_pane_mouse_capture_is_disabled() 
     let mut state = ClientShellState::new(config);
     state.set_snapshot(Box::new(snapshot()));
     state.set_pane_surface(surface());
-    state.compose(44, 20).expect("mobile header");
+    state.compose(44, 30).expect("mobile header");
     assert!(!state.hits.mobile_switch.is_empty());
     let switch = state.hits.mobile_switch;
     state.handle_raw_events(vec![RawInputEvent::Mouse(crossterm::event::MouseEvent {
@@ -179,7 +179,7 @@ fn mobile_shell_controls_remain_clickable_when_pane_mouse_capture_is_disabled() 
         modifiers: KeyModifiers::empty(),
     })]);
     assert_eq!(state.mode, ClientShellMode::Navigate);
-    state.compose(44, 20).expect("mobile switcher");
+    state.compose(44, 30).expect("mobile switcher");
     assert!(!state.hits.mobile_close.is_empty());
     assert!(!state.hits.mobile_targets.is_empty());
 }
@@ -212,7 +212,7 @@ fn mobile_header_and_switcher_render_released_sections_and_stable_targets() {
     }
     state.set_pane_surface(projected_surface);
 
-    let header = state.compose(44, 20).expect("mobile header");
+    let header = state.compose(44, 30).expect("mobile header");
     let header_text = header
         .cells
         .iter()
@@ -235,7 +235,7 @@ fn mobile_header_and_switcher_render_released_sections_and_stable_targets() {
     let opened = state.handle_raw_events(vec![click(state.hits.mobile_switch)]);
     assert!(opened.repaint);
     assert_eq!(state.mode, ClientShellMode::Navigate);
-    let switcher = state.compose(44, 20).expect("mobile switcher");
+    let switcher = state.compose(44, 30).expect("mobile switcher");
     let switcher_text = switcher
         .cells
         .chunks(switcher.width as usize)
@@ -289,9 +289,9 @@ fn mobile_header_and_switcher_render_released_sections_and_stable_targets() {
             )
     )));
 
-    state.compose(44, 20).expect("restored mobile header");
+    state.compose(44, 30).expect("restored mobile header");
     state.handle_raw_events(vec![click(state.hits.mobile_switch)]);
-    state.compose(44, 20).expect("agent switcher");
+    state.compose(44, 30).expect("agent switcher");
     let agent_hit = state
         .hits
         .mobile_targets
@@ -315,9 +315,9 @@ fn mobile_header_and_switcher_render_released_sections_and_stable_targets() {
             )
     )));
 
-    state.compose(44, 20).expect("restored mobile header");
+    state.compose(44, 30).expect("restored mobile header");
     state.handle_raw_events(vec![click(state.hits.mobile_switch)]);
-    state.compose(44, 20).expect("tab switcher");
+    state.compose(44, 30).expect("tab switcher");
     let tab_hit = state
         .hits
         .mobile_targets
@@ -346,7 +346,7 @@ fn mobile_header_and_switcher_render_released_sections_and_stable_targets() {
 }
 
 #[test]
-fn mobile_background_workspace_uses_its_own_active_tab_status() {
+fn mobile_background_workspace_card_shows_its_own_branch_and_name() {
     let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
     let mut projected = snapshot();
     projected.tabs.push(ClientShellTab {
@@ -389,18 +389,39 @@ fn mobile_background_workspace_uses_its_own_active_tab_status() {
     state.set_pane_surface(surface());
     state.mode = ClientShellMode::Navigate;
     state.navigate_workspace_id = state.navigation_target(&ClientEndpointId::Local, "ws_2");
-    let frame = state.compose(44, 20).expect("mobile switcher");
-    let text = frame
-        .cells
-        .chunks(frame.width as usize)
-        .map(|row| {
-            row.iter()
-                .map(|cell| cell.symbol.as_str())
-                .collect::<String>()
+    let frame = state.compose(44, 30).expect("mobile switcher");
+    let row_text = |y: u16| {
+        let width = usize::from(frame.width);
+        let start = usize::from(y) * width;
+        frame.cells[start..start + width]
+            .iter()
+            .map(|cell| cell.symbol.as_str())
+            .collect::<String>()
+    };
+    let background = state
+        .hits
+        .mobile_targets
+        .iter()
+        .find_map(|(rect, target)| {
+            matches!(
+                target,
+                ClientMobileTarget::Workspace { workspace_id, .. } if workspace_id == "ws_2"
+            )
+            .then_some(*rect)
         })
+        .expect("background workspace card");
+    // 背景工作区卡片用它自己的分支和名字，而不是聚焦工作区的。
+    let title = row_text(background.y);
+    let body = row_text(background.y + 1);
+    assert!(title.contains("feature"), "{title:?}");
+    assert!(!title.contains("main"), "{title:?}");
+    assert!(body.contains("background"), "{body:?}");
+    assert!(!body.contains("client-shell"), "{body:?}");
+    // 标签页行按列表序号命名，不按 tab 编号。
+    let text = (0..frame.height)
+        .map(row_text)
         .collect::<Vec<_>>()
         .join("\n");
-    assert!(text.contains("feature · tab two · 2/2"), "{text}");
     assert!(text.contains("2 · logs"), "{text}");
     assert!(!text.contains("7 · logs"), "{text}");
 }
@@ -423,7 +444,7 @@ fn mobile_switcher_create_and_menu_rows_reuse_client_actions() {
     };
 
     state.mode = ClientShellMode::Navigate;
-    state.compose(44, 20).expect("mobile create switcher");
+    state.compose(44, 30).expect("mobile create switcher");
     let new_tab = state
         .hits
         .mobile_targets
@@ -446,7 +467,7 @@ fn mobile_switcher_create_and_menu_rows_reuse_client_actions() {
     assert_eq!(state.mode, ClientShellMode::Terminal);
 
     state.mode = ClientShellMode::Navigate;
-    state.compose(44, 20).expect("mobile workspace switcher");
+    state.compose(44, 30).expect("mobile workspace switcher");
     let new_workspace = state
         .hits
         .mobile_targets
@@ -471,7 +492,7 @@ fn mobile_switcher_create_and_menu_rows_reuse_client_actions() {
     assert_eq!(state.mode, ClientShellMode::Terminal);
 
     state.mode = ClientShellMode::Navigate;
-    state.compose(44, 20).expect("mobile menu switcher");
+    state.compose(44, 30).expect("mobile menu switcher");
     let settings = state
         .hits
         .mobile_targets
@@ -503,7 +524,7 @@ fn mobile_menu_keeps_inert_notes_open_and_cancel_without_workspace_in_navigate()
     state.set_snapshot(Box::new(projected));
     state.set_pane_surface(surface());
     state.mode = ClientShellMode::Navigate;
-    state.compose(44, 20).expect("mobile switcher");
+    state.compose(44, 30).expect("mobile switcher");
     let inert_notes = state
         .hits
         .mobile_targets
@@ -531,7 +552,7 @@ fn mobile_menu_keeps_inert_notes_open_and_cancel_without_workspace_in_navigate()
     state.set_snapshot(Box::new(empty));
     state.set_pane_surface(surface());
     state.mode = ClientShellMode::Navigate;
-    state.compose(44, 20).expect("empty mobile switcher");
+    state.compose(44, 30).expect("empty mobile switcher");
     let new_workspace = state
         .hits
         .mobile_targets
@@ -576,7 +597,7 @@ fn mobile_previous_workspace_action_wraps_across_expanded_entries() {
     let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
     state.set_snapshot(Box::new(projected));
     state.set_pane_surface(surface());
-    state.compose(44, 20).expect("mobile layout");
+    state.compose(44, 30).expect("mobile layout");
     let mut outcome = ClientShellInput::default();
     state.record_binding(
         crate::input::KeybindMatch::Action(crate::input::KeybindAction::PreviousWorkspace),
@@ -671,4 +692,132 @@ fn mobile_switcher_scroll_close_and_width_transition_clear_mobile_hits() {
     assert_eq!(short.cells[0].symbol, "─");
     assert!(state.hits.mobile_close.is_empty());
     assert!(state.hits.mobile_targets.is_empty());
+}
+
+#[test]
+fn mobile_switcher_cards_follow_the_sidebar_card_grammar() {
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    let mut projected = snapshot();
+    projected.tabs[0].agent_status = AgentStatus::Working;
+    projected.agents.push(ClientShellAgent {
+        pane_id: "pane_1".into(),
+        workspace_id: "ws_1".into(),
+        tab_id: "tab_1".into(),
+        name: Some("pi".into()),
+        display_agent: Some("pi".into()),
+        agent: Some("pi".into()),
+        title: None,
+        terminal_title: None,
+        terminal_title_stripped: None,
+        agent_status: AgentStatus::Working,
+        state_change_seq: 1,
+        state_labels: Vec::new(),
+        tokens: Vec::new(),
+        focused: true,
+    });
+    state.set_snapshot(Box::new(projected));
+    state.set_pane_surface(surface());
+    state.mode = ClientShellMode::Navigate;
+    let frame = state.compose(44, 30).expect("mobile switcher");
+    let row_text = |y: u16| {
+        let width = usize::from(frame.width);
+        let start = usize::from(y) * width;
+        frame.cells[start..start + width]
+            .iter()
+            .map(|cell| cell.symbol.as_str())
+            .collect::<String>()
+    };
+    let rect_of = |target: &ClientMobileTarget| {
+        state
+            .hits
+            .mobile_targets
+            .iter()
+            .find(|(_, candidate)| candidate == target)
+            .map(|(rect, _)| *rect)
+            .expect("target hit")
+    };
+    // agents 卡 = 侧栏 compact agents 卡：space 名压上边框，框里是名字与右对齐状态。
+    let agent = rect_of(&ClientMobileTarget::Agent {
+        endpoint_id: ClientEndpointId::Local,
+        pane_id: "pane_1".into(),
+    });
+    let title = row_text(agent.y);
+    let body = row_text(agent.y + 1);
+    assert!(title.contains("client-shell"), "{title:?}");
+    assert!(body.contains("pi"), "{body:?}");
+    assert!(
+        body.trim_end_matches(['│', ' ']).ends_with("running"),
+        "{body:?}"
+    );
+    // spaces 卡 = 侧栏 compact spaces 卡：分支压上边框，框里是工作区名。
+    let space = rect_of(&ClientMobileTarget::Workspace {
+        endpoint_id: ClientEndpointId::Local,
+        workspace_id: "ws_1".into(),
+    });
+    assert!(row_text(space.y).contains("main"), "{title:?}");
+    assert!(row_text(space.y + 1).contains("client-shell"), "{body:?}");
+    // tabs 卡：tab 内的 agent 名压上边框，框里是 tab 名与状态。
+    let tab = rect_of(&ClientMobileTarget::Tab {
+        endpoint_id: ClientEndpointId::Local,
+        tab_id: "tab_1".into(),
+    });
+    let tab_title = row_text(tab.y);
+    let tab_body = row_text(tab.y + 1);
+    assert!(tab_title.contains("pi"), "{tab_title:?}");
+    assert!(tab_body.contains("tab 1"), "{tab_body:?}");
+    assert!(
+        tab_body.trim_end_matches(['│', ' ']).ends_with("running"),
+        "{tab_body:?}"
+    );
+}
+
+#[test]
+fn mobile_switcher_cards_truncate_titles_on_narrow_widths() {
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    let mut projected = snapshot();
+    projected.workspaces[0].label = "a-very-long-workspace-name-for-truncation".into();
+    projected.agents.push(ClientShellAgent {
+        pane_id: "pane_1".into(),
+        workspace_id: "ws_1".into(),
+        tab_id: "tab_1".into(),
+        name: Some("pi".into()),
+        display_agent: Some("pi".into()),
+        agent: Some("pi".into()),
+        title: None,
+        terminal_title: None,
+        terminal_title_stripped: None,
+        agent_status: AgentStatus::Working,
+        state_change_seq: 1,
+        state_labels: Vec::new(),
+        tokens: Vec::new(),
+        focused: true,
+    });
+    state.set_snapshot(Box::new(projected));
+    state.set_pane_surface(surface());
+    state.mode = ClientShellMode::Navigate;
+    let frame = state.compose(32, 30).expect("narrow switcher");
+    let row_text = |y: u16| {
+        let width = usize::from(frame.width);
+        let start = usize::from(y) * width;
+        frame.cells[start..start + width]
+            .iter()
+            .map(|cell| cell.symbol.as_str())
+            .collect::<String>()
+    };
+    let agent = state
+        .hits
+        .mobile_targets
+        .iter()
+        .find_map(|(rect, target)| {
+            matches!(target, ClientMobileTarget::Agent { pane_id, .. } if pane_id == "pane_1")
+                .then_some(*rect)
+        })
+        .expect("agent hit");
+    let title = row_text(agent.y);
+    let body = row_text(agent.y + 1);
+    assert!(title.contains('…'), "{title:?}");
+    assert!(
+        body.trim_end_matches(['│', ' ']).ends_with("running"),
+        "{body:?}"
+    );
 }

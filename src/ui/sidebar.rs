@@ -112,6 +112,7 @@ pub(crate) fn resolved_token_spans(
     custom_style: Style,
     palette: &Palette,
     max_width: usize,
+    mut on_state_icon: impl FnMut(usize),
 ) -> Vec<Span<'static>> {
     let fixed_widths = resolved
         .iter()
@@ -213,32 +214,40 @@ pub(crate) fn resolved_token_spans(
     }
 
     let mut spans = Vec::new();
+    let mut offset = 0;
     for (position, index) in visible_indices.iter().copied().enumerate() {
         let token = &resolved[index];
         if position > 0 {
             let previous = &resolved[visible_indices[position - 1]];
+            let separator = tokens::separator(previous, token);
+            offset += display_width(separator);
             spans.push(Span::styled(
-                tokens::separator(previous, token),
+                separator,
                 Style::default().fg(palette.overlay0),
             ));
         }
+        let start = spans.len();
         match &token.kind {
-            ResolvedTokenKind::StateIcon => spans.push(Span::styled(
-                state_icon.0.to_string(),
-                apply_token_style(state_icon.1, token.style),
-            )),
+            ResolvedTokenKind::StateIcon => {
+                on_state_icon(offset);
+                spans.push(Span::styled(
+                    state_icon.0.to_string(),
+                    apply_token_style(state_icon.1, token.style),
+                ));
+            }
             ResolvedTokenKind::StateText(text) => spans.push(Span::styled(
                 truncate_end(text, budgets[index]),
                 apply_token_style(state_text_style, token.style),
             )),
-            ResolvedTokenKind::Workspace(text) => spans.push(Span::styled(
-                truncate_end(text, budgets[index]),
-                apply_token_style(workspace_style, token.style),
-            )),
+            ResolvedTokenKind::Workspace(text) | ResolvedTokenKind::Agent(text) => {
+                spans.push(Span::styled(
+                    truncate_end(text, budgets[index]),
+                    apply_token_style(workspace_style, token.style),
+                ))
+            }
             ResolvedTokenKind::Machine(text)
             | ResolvedTokenKind::Tab(text)
             | ResolvedTokenKind::Pane(text)
-            | ResolvedTokenKind::Agent(text)
             | ResolvedTokenKind::Branch(text) => spans.push(Span::styled(
                 truncate_end(text, budgets[index]),
                 apply_token_style(secondary_style, token.style),
@@ -270,6 +279,10 @@ pub(crate) fn resolved_token_spans(
                 ));
             }
         }
+        offset += spans[start..]
+            .iter()
+            .map(|span| display_width(&span.content))
+            .sum::<usize>();
     }
     spans
 }

@@ -245,6 +245,8 @@ fn surface_with_popup() -> PaneSurfaceFrame {
     surface
 }
 
+mod agent_animation;
+mod agent_cards;
 mod agents_worktrees_notifications;
 mod chrome_context;
 mod close_pane;
@@ -260,5 +262,6 @@ mod keybindings_settings;
 mod link_hover;
 mod mobile;
 mod mouse_selection;
+mod pane_hover;
 mod popup_focus_projection;
 mod startup_overlays;

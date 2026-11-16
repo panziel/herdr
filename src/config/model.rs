@@ -882,8 +882,8 @@ pub enum TabBarPositionConfig {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PaneBordersConfig {
-    #[default]
     Auto,
+    #[default]
     Always,
     Off,
 }
@@ -1213,7 +1213,7 @@ impl Default for UiConfig {
             confirm_close: true,
             prompt_new_tab_name: true,
             prompt_new_workspace_name: false,
-            pane_borders: PaneBordersConfig::Auto,
+            pane_borders: PaneBordersConfig::Always,
             pane_outer_borders: true,
             pane_scrollbars: true,
             pane_gaps: true,
@@ -1520,7 +1520,7 @@ status_indicators = "symbols"
     #[test]
     fn pane_appearance_defaults_and_parse() {
         let default_config = Config::default();
-        assert_eq!(default_config.ui.pane_borders, PaneBordersConfig::Auto);
+        assert_eq!(default_config.ui.pane_borders, PaneBordersConfig::Always);
         assert!(default_config.ui.pane_outer_borders);
         assert!(default_config.ui.pane_scrollbars);
         assert!(default_config.ui.pane_gaps);

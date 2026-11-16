@@ -60,7 +60,8 @@ fn test_headless_server() -> HeadlessServer {
 }
 
 fn test_headless_server_with_event_hub(event_hub: api::EventHub) -> HeadlessServer {
-    let config = crate::config::Config::default();
+    let mut config = crate::config::Config::default();
+    config.ui.pane_borders = crate::config::PaneBordersConfig::Auto;
     let (_api_tx, api_rx) = tokio::sync::mpsc::unbounded_channel();
     let mut app = crate::app::App::new(
         &config,

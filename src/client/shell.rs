@@ -1,8 +1,10 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 mod actions;
+mod agent_animation;
 mod agent_sidebar;
 mod aggregate_navigation;
+mod card_hover;
 mod machine_diagnostics;
 mod workspace_navigation;
 use workspace_navigation::{PendingWorkspaceHighlight, WorkspaceNavigationTarget};
@@ -27,10 +29,12 @@ mod mouse;
 mod notification_policy;
 mod notifications;
 mod overlay_input;
+mod pane_hover;
 mod preferences;
 mod render;
 mod scroll;
 mod settings;
+mod sidebar_card;
 mod state;
 mod surface_patch;
 mod text_editor;
@@ -54,9 +58,9 @@ use ratatui::style::{Modifier, Style};
 use unicode_width::UnicodeWidthStr;
 
 use super::endpoint::{ClientEndpointId, ClientEndpointStatus, SavedSshEndpoint};
-use crate::app::state::Palette;
+use crate::app::state::{Palette, PaletteEmphasis};
 use crate::config::{
-    Config, LiveKeybindConfig, SidebarCollapsedModeConfig, SpacesSidebarConfig,
+    Config, LiveKeybindConfig, SidebarCardStyle, SidebarCollapsedModeConfig, SpacesSidebarConfig,
     TabBarPositionConfig,
 };
 use crate::protocol::{
@@ -186,12 +190,11 @@ fn status_icon(
             StatusIndicatorStyle::Dots,
             AgentStatus::Working | AgentStatus::Blocked | AgentStatus::Done,
         ) => "●",
-        (StatusIndicatorStyle::Dots, AgentStatus::Idle) => "○",
+        (_, AgentStatus::Idle) => "⏾",
         (StatusIndicatorStyle::Dots, AgentStatus::Unknown) => "·",
         (StatusIndicatorStyle::Symbols, AgentStatus::Blocked) => "×",
         (StatusIndicatorStyle::Symbols, AgentStatus::Working) => "◐",
         (StatusIndicatorStyle::Symbols, AgentStatus::Done) => "✓",
-        (StatusIndicatorStyle::Symbols, AgentStatus::Idle) => "○",
         (StatusIndicatorStyle::Symbols, AgentStatus::Unknown) => "·",
     }
 }

@@ -1395,6 +1395,10 @@ impl AppState {
                 self.handle_pane_died(pane_id);
                 Vec::new()
             }
+            AppEvent::PaneExitStatus { pane_id, exit_code } => {
+                self.record_pane_exit_code(pane_id, exit_code);
+                Vec::new()
+            }
             AppEvent::WorktreeRuntimeRestoreFailed { .. } => Vec::new(),
             AppEvent::UpdateReady {
                 version,
@@ -2118,6 +2122,28 @@ impl AppState {
         } else {
             self.remove_unattached_terminal_ids(pane_terminal_id);
         }
+    }
+
+    fn record_pane_exit_code(&mut self, pane_id: PaneId, exit_code: Option<i32>) {
+        let Some((ws_idx, terminal_id)) =
+            self.workspaces.iter().enumerate().find_map(|(idx, ws)| {
+                ws.pane_state(pane_id)
+                    .map(|pane| (idx, pane.attached_terminal_id.clone()))
+            })
+        else {
+            return;
+        };
+        let Some(terminal) = self.terminals.get_mut(&terminal_id) else {
+            return;
+        };
+        terminal.last_exit_code = exit_code;
+        terminal.revision = terminal.revision.wrapping_add(1);
+        tracing::debug!(
+            pane = pane_id.raw(),
+            workspace = %self.workspaces[ws_idx].id,
+            exit_code = ?exit_code,
+            "recorded pane exit status"
+        );
     }
 }
 
@@ -4527,6 +4553,31 @@ mod tests {
         state.close_pane();
         assert_eq!(state.workspaces[0].panes.len(), 1);
         assert!(!state.plugin_panes.contains_key(&closed));
+        state.assert_invariants_for_test();
+    }
+
+    #[test]
+    fn pane_exit_status_updates_only_the_attached_terminal() {
+        let mut state = app_with_workspaces(&["active", "background"]);
+        let pane_id = state.workspaces[1].tabs[0].root_pane;
+        let terminal_id = state.terminal_id_for_pane(1, pane_id).unwrap();
+        let revision = state.terminals[&terminal_id].revision;
+
+        state.handle_app_event(AppEvent::PaneExitStatus {
+            pane_id,
+            exit_code: Some(7),
+        });
+
+        assert_eq!(state.terminals[&terminal_id].last_exit_code, Some(7));
+        assert_eq!(
+            state.terminals[&terminal_id].revision,
+            revision.wrapping_add(1)
+        );
+        assert!(state
+            .terminals
+            .iter()
+            .filter(|(id, _)| **id != terminal_id)
+            .all(|(_, terminal)| terminal.last_exit_code.is_none()));
         state.assert_invariants_for_test();
     }
 

@@ -22,6 +22,51 @@ fn retain_detached_process_after_wait(
 }
 
 impl App {
+    pub(crate) fn advance_working_spinner(
+        &mut self,
+        now: Instant,
+        presentation_visible: bool,
+    ) -> bool {
+        let working = presentation_visible
+            && self
+                .state
+                .active
+                .and_then(|workspace_index| {
+                    self.state.workspaces.get(workspace_index).map(|workspace| {
+                        workspace.active_tab().is_some_and(|tab| {
+                            tab.panes.values().any(|pane| {
+                                self.state
+                                    .terminals
+                                    .get(&pane.attached_terminal_id)
+                                    .is_some_and(|terminal| {
+                                        terminal.is_agent_terminal()
+                                            && terminal.state == crate::detect::AgentState::Working
+                                            && terminal.last_exit_code.is_none()
+                                    })
+                            })
+                        })
+                    })
+                })
+                .unwrap_or(false);
+        if !working {
+            self.state.next_working_spinner_at = None;
+            return false;
+        }
+
+        let due = self
+            .state
+            .next_working_spinner_at
+            .is_none_or(|deadline| now >= deadline);
+        if !due {
+            return false;
+        }
+        self.state.working_spinner_phase = self.state.working_spinner_phase.wrapping_add(1) % 4;
+        self.state.next_working_spinner_at = Some(now + std::time::Duration::from_millis(120));
+        self.render_dirty.request_generic();
+        self.render_notify.notify_one();
+        true
+    }
+
     pub(crate) fn reap_finished_detached_processes(&mut self) {
         self.detached_process_children
             .retain_mut(|child| retain_detached_process_after_wait(child.id(), child.try_wait()));
@@ -166,6 +211,7 @@ impl App {
             self.next_auto_update_check,
             self.next_agent_manifest_update_check,
             self.agent_metadata_deadline,
+            self.state.next_working_spinner_at,
             self.pending_agent_resume_deadline,
             self.pending_host_appearance_deadline,
             self.session_save_deadline,

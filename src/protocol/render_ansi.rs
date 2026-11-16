@@ -69,6 +69,12 @@ impl BlitEncoder {
         Self::default()
     }
 
+    pub(crate) fn current_cursor(&self) -> Option<CursorState> {
+        self.last_frame
+            .as_ref()
+            .and_then(|frame| frame.cursor.clone())
+    }
+
     pub(crate) fn encode(&self, frame: &FrameData, repaint: bool) -> EncodedBlit {
         self.encode_inner(frame, repaint, false)
     }

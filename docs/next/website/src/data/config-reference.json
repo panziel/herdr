@@ -71,6 +71,12 @@
           "description": "Override the accent color token on top of the base theme. Accepts hex, named colors, rgb(r,g,b), or reset aliases."
         },
         {
+          "key": "theme.custom.hover_border",
+          "type": "color",
+          "default": "\"#d75f00\"",
+          "description": "Set the pane, Space card, and Agent card mouse-hover border color. The default is zellij's ANSI orange (index 166). Accepts hex, named colors, rgb(r,g,b), or reset aliases."
+        },
+        {
           "key": "theme.custom.panel_bg",
           "type": "color",
           "default": "unset",
@@ -185,6 +191,12 @@
           "description": "Override the accent color token when auto_switch selects a light appearance. Applied after theme.custom. Accepts hex, named colors, rgb(r,g,b), or reset aliases."
         },
         {
+          "key": "theme.custom.light.hover_border",
+          "type": "color",
+          "default": "unset",
+          "description": "Set the pane, Space card, and Agent card mouse-hover border color when auto_switch selects a light appearance. Applied after theme.custom. Accepts hex, named colors, rgb(r,g,b), or reset aliases."
+        },
+        {
           "key": "theme.custom.light.panel_bg",
           "type": "color",
           "default": "unset",
@@ -297,6 +309,12 @@
           "type": "color",
           "default": "unset",
           "description": "Override the accent color token when auto_switch selects a dark appearance. Applied after theme.custom. Accepts hex, named colors, rgb(r,g,b), or reset aliases."
+        },
+        {
+          "key": "theme.custom.dark.hover_border",
+          "type": "color",
+          "default": "unset",
+          "description": "Set the pane, Space card, and Agent card mouse-hover border color when auto_switch selects a dark appearance. Applied after theme.custom. Accepts hex, named colors, rgb(r,g,b), or reset aliases."
         },
         {
           "key": "theme.custom.dark.panel_bg",
@@ -967,7 +985,7 @@
         {
           "key": "ui.pane_borders",
           "type": "enum",
-          "default": "\"auto\"",
+          "default": "\"always\"",
           "description": "Draw borders around split panes. auto draws them only for split panes, always also frames a lone pane (only while pane_outer_borders is enabled, since every edge of a lone pane is an outer edge), off disables them. Legacy booleans still parse: true maps to auto and false maps to off.",
           "values": [
             "auto",
@@ -1067,6 +1085,13 @@
           "description": "Blank terminal rows between expanded Agent sidebar entries. Set to 1 to restore the previous spacing."
         },
         {
+          "key": "ui.sidebar.agents.card_style",
+          "type": "enum",
+          "default": "\"plain\"",
+          "description": "Agent sidebar card style. plain keeps the token-template list with background-fill focus. compact draws a 3-row rounded card with the space name on the top border (with a left margin) and the status icon, agent name, · machine/tab context when shown, and right-aligned status text on the content row. full draws a 4-row rounded card with the location (machine, workspace, tab) on its own row. compact/full highlight the border for focus (accent) and mouse hover (theme.custom.hover_border) instead of filling the background, and use fixed content (ignoring ui.sidebar.agents.rows and rows_by_agent).",
+          "values": ["plain", "compact", "full"]
+        },
+        {
           "key": "ui.sidebar.agents.rows",
           "type": "list of token rows",
           "default": "[[\"state_icon\", \"machine\", \"workspace\", \"tab\"], [\"agent\"]]",
@@ -1083,6 +1108,13 @@
           "type": "integer",
           "default": "0",
           "description": "Blank terminal rows between worktree groups and unrelated top-level Spaces. Worktree parents and their indented children remain packed."
+        },
+        {
+          "key": "ui.sidebar.spaces.card_style",
+          "type": "enum",
+          "default": "\"plain\"",
+          "description": "Left Space sidebar card style. plain keeps the token-template list with background-fill selection. compact draws a 3-row rounded card (name on the content row, branch on the top border with a left margin when a branch exists, and no title when it does not). full draws a 4-row rounded card with a separate branch row, degrading to 3 rows when no branch exists. compact/full highlight the border for selection/focus (accent) and mouse hover (theme.custom.hover_border) instead of filling the background, use fixed content (ignoring ui.sidebar.spaces.rows), and render indented worktree children as their own cards.",
+          "values": ["plain", "compact", "full"]
         },
         {
           "key": "ui.sidebar.spaces.rows",

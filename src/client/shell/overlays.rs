@@ -237,9 +237,9 @@ fn panel(
     for x in a.x..a.right() {
         b[(x, a.y)]
             .set_symbol(if x == a.x {
-                "┌"
+                "╭"
             } else if x + 1 == a.right() {
-                "┐"
+                "╮"
             } else {
                 "─"
             })
@@ -247,9 +247,9 @@ fn panel(
         let y = a.bottom() - 1;
         b[(x, y)]
             .set_symbol(if x == a.x {
-                "└"
+                "╰"
             } else if x + 1 == a.right() {
-                "┘"
+                "╯"
             } else {
                 "─"
             })
@@ -648,49 +648,66 @@ fn render_rename_overlay(
 ) -> Option<OverlayRender> {
     let q = popup(b.area, 56, 7)?;
     let i = panel(b, q, p.accent, p.panel_bg)?;
+    super::sidebar_card::draw_card_border_title(b, q, v.title, p.accent);
+    let field = Rect::new(i.x + 3, i.y + 1, i.width.saturating_sub(6), 1);
+    let cursor = text_editor::render(
+        b,
+        field,
+        &v.input,
+        Style::default().fg(p.text).bg(p.panel_bg),
+    );
+    let y_line = (i.y + 2).min(i.bottom().saturating_sub(1));
     put_text(
         b,
-        i.x,
-        i.y,
-        i.width,
-        v.title,
+        field.x,
+        y_line,
+        field.width,
+        &"─".repeat(field.width as usize),
         Style::default()
-            .fg(p.text)
+            .fg(p.accent)
+            .bg(p.panel_bg)
+            .add_modifier(Modifier::DIM),
+    );
+    let y = (i.y + 3).min(i.bottom().saturating_sub(1));
+    let fit = |x: u16, w: u16| w.min(i.right().saturating_sub(x));
+    let save_x = field.x;
+    let clear_x = save_x.saturating_add(display_width("↵ save") + 4);
+    let cancel_x = clear_x.saturating_add(display_width("^c clear") + 4);
+    let save = Rect::new(save_x, y, fit(save_x, display_width("↵ save")), 1);
+    let clear = Rect::new(clear_x, y, fit(clear_x, display_width("^c clear")), 1);
+    let cancel = Rect::new(cancel_x, y, fit(cancel_x, display_width("esc cancel")), 1);
+    put_text(
+        b,
+        save.x,
+        save.y,
+        save.width,
+        "↵ save",
+        Style::default()
+            .fg(p.accent)
             .bg(p.panel_bg)
             .add_modifier(Modifier::BOLD),
     );
-    let input = Rect::new(i.x, i.y + 2, i.width, 1);
-    b.set_style(input, Style::default().fg(p.text).bg(p.surface0));
-    let cursor = text_editor::render(
+    put_text(
         b,
-        Rect::new(input.x + 1, input.y, input.width.saturating_sub(1), 1),
-        &v.input,
-        Style::default().fg(p.text).bg(p.surface0),
+        clear.x,
+        clear.y,
+        clear.width,
+        "^c clear",
+        Style::default().fg(p.subtext0).bg(p.panel_bg),
     );
-    let rs = row(i, &[8, 10, 12], 2, 3);
-    let [save, clear, cancel] = rs.as_slice() else {
-        return None;
-    };
-    button(
+    put_text(
         b,
-        *save,
-        " ↵ save ",
-        Style::default()
-            .fg(contrast(p))
-            .bg(p.accent)
-            .add_modifier(Modifier::BOLD),
+        cancel.x,
+        cancel.y,
+        cancel.width,
+        "esc cancel",
+        Style::default().fg(p.subtext0).bg(p.panel_bg),
     );
-    let n = Style::default()
-        .fg(p.text)
-        .bg(p.surface0)
-        .add_modifier(Modifier::BOLD);
-    button(b, *clear, " ^c clear ", n);
-    button(b, *cancel, " esc cancel ", n);
     Some(OverlayRender {
         area: q,
-        primary: *save,
-        clear: *clear,
-        cancel: *cancel,
+        primary: save,
+        clear,
+        cancel,
         navigator_popup: Rect::default(),
         navigator_search: Rect::default(),
         navigator_rows: Vec::new(),

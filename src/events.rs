@@ -81,6 +81,11 @@ pub enum AppEvent {
         pane_id: PaneId,
         exit_reason: crate::platform::ChildExitReason,
     },
+    /// The pane child exit code, delivered before its lifecycle event.
+    PaneExitStatus {
+        pane_id: PaneId,
+        exit_code: Option<i32>,
+    },
     /// A worktree-removal runtime could not be restored normally.
     WorktreeRuntimeRestoreFailed { pane_id: PaneId, operation_id: u64 },
     /// Process detection identified an agent before its screen state was confirmed.

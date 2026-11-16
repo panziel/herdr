@@ -1,7 +1,7 @@
 use crate::config::{Keybinds, NewTerminalCwdConfig, SoundConfig, ToastConfig};
 use crossterm::event::{KeyCode, KeyModifiers};
 use ratatui::layout::Rect;
-use ratatui::style::Color;
+use ratatui::style::{Color, Modifier, Style};
 
 use crate::detect::AgentState;
 use crate::layout::{PaneId, PaneInfo};
@@ -35,6 +35,8 @@ use crate::workspace::Workspace;
 pub struct Palette {
     /// Primary accent (highlight, active borders).
     pub accent: Color,
+    /// Border color for the pane or Space card under the mouse pointer.
+    pub hover_border: Color,
     /// Background for the tab bar, floating panels, overlays, and modals.
     pub panel_bg: Color,
     /// Optional desktop sidebar background. Reset preserves the terminal background.
@@ -73,6 +75,40 @@ pub struct Palette {
     pub peach: Color,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PaletteEmphasis {
+    Strong,
+    Normal,
+    Muted,
+}
+
+impl Palette {
+    pub(crate) fn hover_border_color(&self) -> Color {
+        self.hover_border
+    }
+
+    pub(crate) fn selected_style(&self, emphasis: PaletteEmphasis) -> Style {
+        let mut style = Style::default().fg(self.text).bg(self.accent);
+        if emphasis == PaletteEmphasis::Strong {
+            style = style.add_modifier(Modifier::BOLD);
+        }
+        style
+    }
+
+    pub(crate) fn unselected_style(&self, emphasis: PaletteEmphasis) -> Style {
+        let mut style = Style::default().bg(self.surface0).fg(match emphasis {
+            PaletteEmphasis::Strong | PaletteEmphasis::Normal => self.overlay1,
+            PaletteEmphasis::Muted => self.overlay0,
+        });
+        if emphasis == PaletteEmphasis::Strong {
+            style = style.add_modifier(Modifier::BOLD);
+        } else if emphasis == PaletteEmphasis::Muted {
+            style = style.add_modifier(Modifier::DIM);
+        }
+        style
+    }
+}
+
 impl Palette {
     /// Catppuccin Mocha — the default.
     pub fn catppuccin() -> Self {
@@ -96,6 +132,7 @@ impl Palette {
             blue: Color::Rgb(137, 180, 250),
             teal: Color::Rgb(148, 226, 213),
             peach: Color::Rgb(250, 179, 135),
+            hover_border: Color::Indexed(166),
         }
     }
 
@@ -121,6 +158,7 @@ impl Palette {
             blue: Color::Rgb(30, 102, 245),
             teal: Color::Rgb(23, 146, 153),
             peach: Color::Rgb(254, 100, 11),
+            hover_border: Color::Indexed(166),
         }
     }
 
@@ -146,6 +184,7 @@ impl Palette {
             blue: Color::Blue,
             teal: Color::Cyan,
             peach: Color::Yellow,
+            hover_border: Color::Indexed(166),
         }
     }
 
@@ -171,6 +210,7 @@ impl Palette {
             blue: Color::Rgb(122, 162, 247),
             teal: Color::Rgb(125, 207, 255),
             peach: Color::Rgb(255, 158, 100),
+            hover_border: Color::Indexed(166),
         }
     }
 
@@ -196,6 +236,7 @@ impl Palette {
             blue: Color::Rgb(46, 125, 233),
             teal: Color::Rgb(17, 140, 116),
             peach: Color::Rgb(177, 92, 0),
+            hover_border: Color::Indexed(166),
         }
     }
 
@@ -221,6 +262,7 @@ impl Palette {
             blue: Color::Rgb(139, 233, 253), // cyan-ish
             teal: Color::Rgb(139, 233, 253),
             peach: Color::Rgb(255, 184, 108),
+            hover_border: Color::Indexed(166),
         }
     }
 
@@ -246,6 +288,7 @@ impl Palette {
             blue: Color::Rgb(129, 161, 193),
             teal: Color::Rgb(143, 188, 187),
             peach: Color::Rgb(208, 135, 112),
+            hover_border: Color::Indexed(166),
         }
     }
 
@@ -271,6 +314,7 @@ impl Palette {
             blue: Color::Rgb(131, 165, 152),
             teal: Color::Rgb(142, 192, 124),
             peach: Color::Rgb(254, 128, 25),
+            hover_border: Color::Indexed(166),
         }
     }
 
@@ -296,6 +340,7 @@ impl Palette {
             blue: Color::Rgb(7, 102, 120),
             teal: Color::Rgb(66, 123, 88),
             peach: Color::Rgb(175, 58, 3),
+            hover_border: Color::Indexed(166),
         }
     }
 
@@ -321,6 +366,7 @@ impl Palette {
             blue: Color::Rgb(97, 175, 239),
             teal: Color::Rgb(86, 182, 194),
             peach: Color::Rgb(209, 154, 102),
+            hover_border: Color::Indexed(166),
         }
     }
 
@@ -346,6 +392,7 @@ impl Palette {
             blue: Color::Rgb(64, 120, 242),
             teal: Color::Rgb(1, 132, 188),
             peach: Color::Rgb(152, 104, 1),
+            hover_border: Color::Indexed(166),
         }
     }
 
@@ -371,6 +418,7 @@ impl Palette {
             blue: Color::Rgb(38, 139, 210),
             teal: Color::Rgb(42, 161, 152),
             peach: Color::Rgb(203, 75, 22),
+            hover_border: Color::Indexed(166),
         }
     }
 
@@ -396,6 +444,7 @@ impl Palette {
             blue: Color::Rgb(38, 139, 210),
             teal: Color::Rgb(42, 161, 152),
             peach: Color::Rgb(203, 75, 22),
+            hover_border: Color::Indexed(166),
         }
     }
 
@@ -421,6 +470,7 @@ impl Palette {
             blue: Color::Rgb(126, 156, 216),
             teal: Color::Rgb(127, 180, 202),
             peach: Color::Rgb(255, 160, 102),
+            hover_border: Color::Indexed(166),
         }
     }
 
@@ -446,6 +496,7 @@ impl Palette {
             blue: Color::Rgb(77, 105, 155),
             teal: Color::Rgb(78, 140, 162),
             peach: Color::Rgb(204, 109, 0),
+            hover_border: Color::Indexed(166),
         }
     }
 
@@ -471,6 +522,7 @@ impl Palette {
             blue: Color::Rgb(49, 116, 143),    // pine
             teal: Color::Rgb(156, 207, 216),   // foam
             peach: Color::Rgb(234, 154, 151),  // rose
+            hover_border: Color::Indexed(166),
         }
     }
 
@@ -496,6 +548,7 @@ impl Palette {
             blue: Color::Rgb(40, 105, 131),
             teal: Color::Rgb(86, 148, 159),
             peach: Color::Rgb(215, 130, 126),
+            hover_border: Color::Indexed(166),
         }
     }
 
@@ -521,6 +574,7 @@ impl Palette {
             blue: Color::Rgb(176, 176, 176),
             teal: Color::Rgb(102, 221, 204),
             peach: Color::Rgb(255, 199, 153),
+            hover_border: Color::Indexed(166),
         }
     }
 
@@ -554,6 +608,9 @@ impl Palette {
         use crate::config::parse_color;
         if let Some(c) = &custom.accent {
             self.accent = parse_color(c);
+        }
+        if let Some(c) = &custom.hover_border {
+            self.hover_border = parse_color(c);
         }
         if let Some(c) = &custom.panel_bg {
             self.panel_bg = parse_color(c);
@@ -616,6 +673,9 @@ impl Palette {
         use crate::config::parse_color;
         if let Some(c) = &custom.accent {
             self.accent = parse_color(c);
+        }
+        if let Some(c) = &custom.hover_border {
+            self.hover_border = parse_color(c);
         }
         if let Some(c) = &custom.panel_bg {
             self.panel_bg = parse_color(c);
@@ -829,6 +889,8 @@ pub struct AppState {
     pub sidebar_agents: crate::config::AgentsSidebarConfig,
     pub sidebar_spaces: crate::config::SpacesSidebarConfig,
     pub next_agent_state_change_seq: u64,
+    pub(crate) working_spinner_phase: u8,
+    pub(crate) next_working_spinner_at: Option<std::time::Instant>,
     pub confirm_close: bool,
     pub pane_borders: crate::config::PaneBordersConfig,
     pub pane_outer_borders: bool,
@@ -1071,6 +1133,8 @@ impl AppState {
             sidebar_agents: crate::config::AgentsSidebarConfig::default(),
             sidebar_spaces: crate::config::SpacesSidebarConfig::default(),
             next_agent_state_change_seq: 0,
+            working_spinner_phase: 0,
+            next_working_spinner_at: None,
             confirm_close: true,
             pane_borders: crate::config::PaneBordersConfig::Auto,
             pane_outer_borders: true,
@@ -1326,6 +1390,27 @@ mod tests {
     use crossterm::event::KeyEvent;
 
     #[test]
+    fn palette_emphasis_keeps_selected_and_unselected_pairs_distinct() {
+        let palette = Palette::catppuccin();
+        let selected = palette.selected_style(PaletteEmphasis::Strong);
+        let unselected = palette.unselected_style(PaletteEmphasis::Muted);
+
+        assert_eq!(selected.bg, Some(palette.accent));
+        assert!(selected.add_modifier.contains(Modifier::BOLD));
+        assert_eq!(unselected.bg, Some(palette.surface0));
+        assert!(unselected.add_modifier.contains(Modifier::DIM));
+        assert_ne!(selected.bg, unselected.bg);
+    }
+
+    #[test]
+    fn hover_border_color_uses_zellij_default() {
+        assert_eq!(
+            Palette::catppuccin().hover_border_color(),
+            Color::Indexed(166)
+        );
+    }
+
+    #[test]
     fn new_pane_size_uses_headless_size_before_first_view() {
         let mut state = AppState::test_new();
         state.headless_size = (132, 41);
@@ -1474,6 +1559,7 @@ mod tests {
             sidebar_bg: Some("#181825".to_string()),
             active_row_bg: Some("#313244".to_string()),
             selection_bg: Some("#45475a".to_string()),
+            hover_border: Some("#d75f00".to_string()),
             ..Default::default()
         };
         let palette = Palette::catppuccin().with_overrides(&custom);
@@ -1481,6 +1567,7 @@ mod tests {
         assert_eq!(palette.sidebar_bg, Color::Rgb(24, 24, 37));
         assert_eq!(palette.active_row_bg, Color::Rgb(49, 50, 68));
         assert_eq!(palette.selection_bg, Color::Rgb(69, 71, 90));
+        assert_eq!(palette.hover_border, Color::Rgb(215, 95, 0));
     }
 
     #[test]

@@ -766,6 +766,8 @@ async fn run_client_loop(
                     state.presentation_frozen = frozen;
                     if let Some(frame) = frame {
                         state.present_frozen_chrome(frame);
+                    } else if let Some(shell) = state.shell.as_mut() {
+                        shell.pause_agent_animation();
                     }
                 }
             }
@@ -2373,6 +2375,27 @@ async fn run_client_loop(
                         &mut scheduled_activation,
                     )? {
                         return Ok(());
+                    }
+                    if !state.presentation_frozen && !state.repaint_pending {
+                        let rows = state
+                            .shell
+                            .as_mut()
+                            .map(|shell| shell.tick_agent_animation(now))
+                            .unwrap_or_default();
+                        if !rows.is_empty() {
+                            let patch = shell::ClientComposedSurfacePatch {
+                                rows,
+                                cursor: state.blit_encoder.current_cursor(),
+                            };
+                            match state.present_surface_patch(patch) {
+                                Ok(true) => {}
+                                Ok(false) => state.request_repaint(),
+                                Err(error) => {
+                                    warn!(%error, "failed to present agent status animation");
+                                    state.request_repaint();
+                                }
+                            }
+                        }
                     }
                 }
             }

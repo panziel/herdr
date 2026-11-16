@@ -94,6 +94,7 @@ pub(super) struct ShellHitMap {
     pub(super) popup: Option<PaneHit>,
     pub(super) pane_splits: Vec<PaneSplitHit>,
     pub(super) agents: Vec<(Rect, String)>,
+    pub(super) agent_indicators: Vec<super::agent_animation::AgentIndicator>,
     pub(super) endpoint_agents: Vec<(Rect, ClientEndpointId, String)>,
     pub(super) agent_body: Rect,
     pub(super) agent_scrollbar: Rect,
@@ -118,6 +119,7 @@ pub(super) struct ShellHitMap {
     pub(super) overlay_primary: Rect,
     pub(super) overlay_clear: Rect,
     pub(super) overlay_cancel: Rect,
+    pub(super) overlay_popup: Rect,
     pub(super) navigator_popup: Rect,
     pub(super) navigator_search: Rect,
     pub(super) navigator_rows: Vec<(Rect, ClientNavigatorTarget)>,
@@ -211,6 +213,10 @@ pub(super) enum ClientChromeDrag {
         tab_id: String,
         workspace_id: String,
         insert_index: Option<usize>,
+    },
+    PaneMove {
+        source_pane_id: String,
+        target_pane_id: Option<String>,
     },
     Workspace {
         source_workspace_id: String,
@@ -907,6 +913,9 @@ pub(crate) struct ClientShellState {
     pub(super) previous_pane_id: Option<String>,
     pub(super) pane_mouse_gesture: Option<ClientPaneMouseGesture>,
     pub(super) link_hover: Option<super::link_hover::LinkHover>,
+    pub(super) hovered_pane_id: Option<String>,
+    pub(super) hovered_card: Option<super::card_hover::HoveredCard>,
+    pub(super) agent_animation: super::agent_animation::AgentAnimation,
     pub(super) url_click_consumes_until_up: bool,
     /// The host terminal reports key releases (Kitty event types), so text
     /// presses can be tracked until their release arrives.
@@ -1081,6 +1090,9 @@ impl ClientShellState {
             previous_pane_id: None,
             pane_mouse_gesture: None,
             link_hover: None,
+            hovered_pane_id: None,
+            hovered_card: None,
+            agent_animation: Default::default(),
             url_click_consumes_until_up: false,
             host_reports_key_releases: false,
             host_erase_is_ctrl_h: false,
@@ -1277,6 +1289,9 @@ impl ClientShellState {
         self.previous_pane_id = None;
         self.pane_mouse_gesture = None;
         self.link_hover = None;
+        self.hovered_pane_id = None;
+        self.hovered_card = None;
+        self.agent_animation = Default::default();
         self.url_click_consumes_until_up = false;
         self.replaying_url_click = false;
         self.selection = None;
@@ -1883,6 +1898,7 @@ impl ClientShellState {
         self.selection_autoscroll_deadline
             .into_iter()
             .chain(self.selection_repaint_deadline)
+            .chain(self.agent_animation.deadline())
             .min()
             .map(|deadline| deadline.saturating_duration_since(now).min(default))
             .unwrap_or(default)

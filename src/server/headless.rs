@@ -508,6 +508,14 @@ impl HeadlessServer {
 
             // 6. Handle scheduled tasks.
             let now = Instant::now();
+            if self
+                .app
+                .advance_working_spinner(now, latest_shell_client(&self.clients).is_some())
+            {
+                needs_render = true;
+                needs_full_render = true;
+                crate::render_prof::event("full_render_cause.working_spinner");
+            }
             if self.handle_scheduled_tasks_headless(now, needs_render) {
                 needs_render = true;
                 needs_full_render = true;

@@ -276,13 +276,18 @@ active_row_bg = "#1e1e2e"
 selection_bg = "#313244"
 panel_bg = "reset"
 accent = "#a6e3a1"
+hover_border = "#d75f00"
 green = "#a6e3a1"
 blue = "#89b4fa"
+teal = "#94e2d5"
+surface0 = "#313244"
 red = "#f38ba8"
 yellow = "#f9e2af"
 ```
 
 `sidebar_bg` 可单独设置桌面侧边栏的背景色。省略时，侧边栏继续使用宿主终端背景。`active_row_bg` 可更改当前 Space 和已聚焦 Agent 行的背景色，而不会影响分隔线或滚动条轨道。`selection_bg` 可更改侧边栏中 Navigate 模式光标行的背景色。
+
+`accent` 控制选中标签和焦点标记，`hover_border` 单独控制非焦点窗格以及 Space、Agent 卡片的悬停边框，默认使用 zellij 的 ANSI 橙色（索引 166）。Agents 列表的运行、等待输入、完成、空闲状态分别使用 `yellow`、`red`、`teal`、`green`，状态文字只着色、不带背景。这些设置只影响 Herdr 界面，窗格内应用的颜色由应用自身控制。
 
 颜色值支持十六进制、命名颜色、`rgb(r,g,b)`，以及 `reset`、`default`、`none`、`transparent` 等重置别名。
 
@@ -307,7 +312,7 @@ text = "#cdd6f4"
 
 侧边栏是 Herdr 的主仪表盘。在[配置参考](/docs/config-reference/)中搜索 `ui.`，可查看尺寸、折叠模式、Agent 面板排序、鼠标行为、窗格边框和其他显示设置。
 
-`ui.pane_borders` 接受 `"auto"`（默认值，仅为分割窗格显示边框）、`"always"`（也为单个窗格显示边框）或 `"off"`。单窗格的所有边都是外边，因此还需要 `ui.pane_outer_borders = true` 才会显示边框。旧的布尔值仍然有效：`true` 对应 `"auto"`，`false` 对应 `"off"`。
+`ui.pane_borders` 接受 `"always"`（默认值，也为单个窗格显示边框）、`"auto"`（仅为分割窗格显示边框）或 `"off"`。单窗格的所有边都是外边，因此还需要 `ui.pane_outer_borders = true` 才会显示边框。旧的布尔值仍然有效：`true` 对应 `"auto"`，`false` 对应 `"off"`。
 
 在 `[ui]` 下设置 `tab_bar_position = "bottom"`，可将桌面标签栏放到终端窗格下方。Prefix、Navigate、Copy 和 Resize 模式栏会在显示期间临时替换底部标签栏。默认值为 `"top"`。
 
@@ -346,14 +351,14 @@ window_title = "{hostname}: {workspace}"
 
 `client.window_title.set` 会覆盖配置的标题，直到 `client.window_title.clear` 将其交还。
 
-智能体状态默认使用紧凑的彩色圆点。若要同时通过形状和颜色区分 blocked、working、done、idle 与 unknown 状态，请在设置中选择 **distinct symbols**，或配置：
+Spaces、tab 等位置的紧凑状态指示默认使用彩色圆点，空闲状态使用休息符号 `⏾`。若要同时通过形状和颜色区分 blocked、working、done、idle 与 unknown 状态，请在设置中选择 **distinct symbols**，或配置：
 
 ```toml
 [ui]
 status_indicators = "symbols"
 ```
 
-这些符号是静态的，因此该选项不会启用旋转动画。
+该选项不会启用动画。Agents 列表独立使用 `◐`、`!`、`✓`、`⏾`、`?` 区分运行、待输入、完成、空闲与未知状态；其中运行图标旋转，待输入标记缓慢明暗变化，其余状态保持静态。
 
 ### 侧边栏行布局
 
@@ -362,6 +367,7 @@ status_indicators = "symbols"
 ```toml
 [ui.sidebar.agents]
 row_gap = 0
+card_style = "plain"
 rows = [
   ["state_icon", "machine", "workspace", "tab"],
   ["agent"],
@@ -369,6 +375,7 @@ rows = [
 
 [ui.sidebar.spaces]
 row_gap = 0
+card_style = "plain"
 rows = [
   ["state_icon", "workspace"],
   ["branch", "git_status"],
@@ -431,6 +438,10 @@ rows = [
 规则适用于 Agent 行、`rows_by_agent` 覆盖和 Space 行中的文本值内置 token 及自定义 `$name` token。上例中，`$load` 报告 `"90"` 时显示红色粗体，`"60"` 时显示黄色，`"90%"` 时保持白色。未报告的 token 仍然不显示。`state_icon` 和复合 token `git_status` 仅接受固定样式，不支持规则。未知条件或格式错误的规则会在加载配置时被拒绝；不支持正则表达式、模糊匹配或脚本。
 
 `row_gap` 分别控制 Agent 和 Space 面板中条目之间的空白终端行数。默认值为 `0`，会紧密排列条目；设为 `1` 可恢复之前的间距。它不会在 `rows` 声明的内容行之间添加间距。连续缩进的 worktree 子项仍会作为一个 Space 组紧密排列。
+
+`card_style` 选择 Space 侧栏的卡片形状：`plain`（默认）保持上面的 token 模板列表，用背景填充表示选中；`compact` 把每个 Space 画成 3 行圆角卡片（名称占内容行，分支画在上边框并保留左边距，无分支时不画标题）；`full` 画 4 行圆角卡片、分支单独一行，无分支时退化为 3 行。缺少分支时不显示占位文字。`compact` 和 `full` 的选中/聚焦高亮是强调色的卡片边框而非背景填充，鼠标悬停未选中卡片时边框会像窗格悬停一样变色；内容固定（忽略 `rows` 模板），缩进的 worktree 子项渲染为独立卡片。
+
+`[ui.sidebar.agents]` 接受同样的 `card_style` 取值。`compact` 把每个智能体画成 3 行卡片：所属 space 名画在上边框（保留左边距），内容行是状态图标、智能体名称、` · ` 与机器/标签页上下文（显示时），状态文字右对齐；`full` 画 4 行卡片，位置（机器、工作区，以及显示时的标签页）单独一行。聚焦的智能体使用强调色边框，悬停其他卡片时边框变色。Agent 卡片同样忽略 `rows` 和 `rows_by_agent`。所有样式下，状态文字（`running`、`input`、`done`、`idle`、`unknown`）只使用状态色，不带背景。
 
 在 `rows_by_agent` 下为已知智能体覆盖完整的 Agent 布局：
 

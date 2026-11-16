@@ -1,7 +1,7 @@
 use ratatui::{
     buffer::Buffer,
     layout::{Direction, Rect},
-    style::{Color, Modifier, Style},
+    style::{Color, Style},
     widgets::{Block, Borders, Paragraph, Wrap},
     Frame,
 };
@@ -17,18 +17,106 @@ use crate::layout::{PaneId, PaneInfo};
 use crate::popup_size::resolve_popup_geometry;
 use crate::terminal::{TerminalRuntime, TerminalRuntimeRegistry};
 
+#[derive(Clone, Copy)]
+enum PaneBorderStatus {
+    Running(u8),
+    Done,
+    Idle,
+    Unknown,
+    Blocked,
+    Exit(i32),
+}
+
+impl PaneBorderStatus {
+    fn label(self) -> String {
+        match self {
+            Self::Running(phase) => {
+                let spinner = ["◐", "◓", "◑", "◒"][usize::from(phase) % 4];
+                format!("{spinner} running")
+            }
+            Self::Done => "✓ done".into(),
+            Self::Idle => "⏾ idle".into(),
+            Self::Unknown => "? unknown".into(),
+            Self::Blocked => "! input".into(),
+            Self::Exit(code) => format!("✕ exit {code}"),
+        }
+    }
+
+    fn color(self, palette: &Palette) -> Color {
+        match self {
+            Self::Running(_) => palette.yellow,
+            Self::Done => palette.teal,
+            Self::Idle => palette.green,
+            Self::Unknown => palette.overlay0,
+            Self::Blocked => palette.red,
+            Self::Exit(_) => palette.red,
+        }
+    }
+}
+
+fn pane_border_status(
+    terminal: &crate::terminal::TerminalState,
+    spinner_phase: u8,
+) -> Option<PaneBorderStatus> {
+    if let Some(exit_code) = terminal.last_exit_code {
+        return Some(if exit_code == 0 {
+            PaneBorderStatus::Done
+        } else {
+            PaneBorderStatus::Exit(exit_code)
+        });
+    }
+    if !terminal.is_agent_terminal() {
+        return None;
+    }
+    match terminal.state {
+        crate::detect::AgentState::Working => Some(PaneBorderStatus::Running(spinner_phase)),
+        crate::detect::AgentState::Blocked => Some(PaneBorderStatus::Blocked),
+        crate::detect::AgentState::Idle => Some(PaneBorderStatus::Idle),
+        crate::detect::AgentState::Unknown => Some(PaneBorderStatus::Unknown),
+    }
+}
+
 pub(crate) fn pane_is_scrolled_back(rt: &TerminalRuntime) -> bool {
     rt.scroll_metrics()
         .is_some_and(|metrics| metrics.offset_from_bottom > 0)
 }
 
-fn pane_border_title(label: &str, pane_width: u16, _focused: bool) -> Option<String> {
+fn pane_border_title(label: &str, pane_width: usize) -> Option<String> {
     let label = label.trim();
     if label.is_empty() || pane_width <= 4 {
         return None;
     }
-    let max_label_width = pane_width.saturating_sub(4) as usize;
+    let max_label_width = pane_width.saturating_sub(4);
     Some(format!(" {} ", truncate_end(label, max_label_width)))
+}
+
+fn pane_border_title_parts(
+    label: Option<&str>,
+    status: Option<PaneBorderStatus>,
+    pane_width: u16,
+) -> Option<(String, Option<String>)> {
+    let available = pane_width.saturating_sub(2) as usize;
+    let status = status.map(|status| format!(" {} ", status.label()));
+    let status_width = status
+        .as_deref()
+        .map(super::text::display_width)
+        .unwrap_or_default();
+    let separator_width = usize::from(status.is_some() && label.is_some());
+    let label_width = available
+        .saturating_sub(status_width)
+        .saturating_sub(separator_width);
+    let label = label.and_then(|label| pane_border_title(label, label_width + 2));
+    if label.is_none() && status.is_none() {
+        return None;
+    }
+    if label.is_none() {
+        return status.map(|status| (String::new(), Some(status)));
+    }
+    let label = label.unwrap_or_default();
+    if status.is_some() && label_width == 0 {
+        return status.map(|status| (String::new(), Some(status)));
+    }
+    Some((label, status))
 }
 
 // Full view computation reaches this helper for active and background panes.
@@ -596,12 +684,12 @@ fn render_pane_borders(
         }
         let cell = &mut buf[(x, y)];
         cell.set_symbol(symbol);
-        let color = if focused {
-            app.palette.accent
+        let style = if focused {
+            Style::default().fg(app.palette.accent)
         } else {
-            app.palette.overlay0
+            Style::default().fg(app.palette.overlay0)
         };
-        cell.set_style(Style::default().fg(color));
+        cell.set_style(style);
     }
 
     render_pane_border_titles(app, ws, pane_infos, frame);
@@ -741,19 +829,26 @@ fn render_pane_border_titles(
         if !info.borders.contains(Borders::TOP) || info.rect.width <= 4 {
             continue;
         }
-        let Some(title) = ws
+        let Some(terminal) = ws
             .pane_state(info.id)
             .and_then(|pane| app.terminals.get(&pane.attached_terminal_id))
-            .and_then(|terminal| terminal.border_label(app.show_agent_labels_on_pane_borders))
-            .and_then(|label| pane_border_title(&label, info.rect.width, info.is_focused))
         else {
+            continue;
+        };
+        let Some((title, status)) = pane_border_title_parts(
+            terminal
+                .border_label(app.show_agent_labels_on_pane_borders)
+                .as_deref(),
+            pane_border_status(terminal, app.working_spinner_phase),
+            info.rect.width,
+        ) else {
             continue;
         };
         let y = info.rect.y;
         if y < area.y || y >= area.y.saturating_add(area.height) {
             continue;
         }
-        let start_x = info.rect.x.saturating_add(1);
+        let start_x = info.rect.x.saturating_add(3);
         let end_x = info
             .rect
             .x
@@ -763,22 +858,34 @@ fn render_pane_border_titles(
         if start_x >= end_x {
             continue;
         }
-        let color = if info.is_focused {
-            app.palette.accent
+        let style = if info.is_focused {
+            Style::default().fg(app.palette.accent)
         } else {
-            app.palette.overlay0
+            Style::default().fg(app.palette.overlay0)
         };
-        let mut style = Style::default().fg(color);
-        if info.is_focused {
-            style = style.add_modifier(Modifier::BOLD);
+        let max_width = end_x.saturating_sub(start_x) as usize;
+        let title_width = super::text::display_width(&title);
+        buf.set_stringn(start_x, y, title, max_width, style);
+        if let Some(status) = status {
+            let status_x = start_x.saturating_add(title_width as u16);
+            if status_x < end_x {
+                let status_style =
+                    Style::default().fg(pane_border_status(terminal, app.working_spinner_phase)
+                        .map(|status| status.color(&app.palette))
+                        .unwrap_or(if info.is_focused {
+                            app.palette.accent
+                        } else {
+                            app.palette.overlay0
+                        }));
+                buf.set_stringn(
+                    status_x,
+                    y,
+                    status,
+                    end_x.saturating_sub(status_x) as usize,
+                    status_style,
+                );
+            }
         }
-        buf.set_stringn(
-            start_x,
-            y,
-            title,
-            end_x.saturating_sub(start_x) as usize,
-            style,
-        );
     }
 }
 
@@ -795,10 +902,10 @@ fn line_cell_symbol(line: LineCell) -> &'static str {
         (false, false, true, true) | (false, false, true, false) | (false, false, false, true) => {
             "─"
         }
-        (false, true, false, true) => "┌",
-        (false, true, true, false) => "┐",
-        (true, false, false, true) => "└",
-        (true, false, true, false) => "┘",
+        (false, true, false, true) => "╭",
+        (false, true, true, false) => "╮",
+        (true, false, false, true) => "╰",
+        (true, false, true, false) => "╯",
         _ => "",
     }
 }
@@ -946,6 +1053,7 @@ mod tests {
     use crate::terminal::TerminalRuntime;
     use crate::terminal::TerminalState;
     use crate::workspace::Workspace;
+    use ratatui::style::Modifier;
 
     fn render_view_pane_borders(
         app: &AppState,
@@ -989,31 +1097,67 @@ mod tests {
     #[test]
     fn pane_border_title_trims_and_truncates() {
         assert_eq!(
-            pane_border_title(" claude ", 20, false).as_deref(),
+            pane_border_title(" claude ", 20).as_deref(),
             Some(" claude ")
         );
-        assert_eq!(
-            pane_border_title(" claude ", 20, true).as_deref(),
-            Some(" claude ")
-        );
-        assert_eq!(pane_border_title("", 20, false), None);
-        assert_eq!(
-            pane_border_title("abcdef", 8, false).as_deref(),
-            Some(" abc… ")
-        );
-        assert_eq!(
-            pane_border_title("abcdef", 8, true).as_deref(),
-            Some(" abc… ")
-        );
-        assert_eq!(pane_border_title("abcdef", 4, false), None);
+        assert_eq!(pane_border_title("", 20), None);
+        assert_eq!(pane_border_title("abcdef", 8).as_deref(), Some(" abc… "));
+        assert_eq!(pane_border_title("abcdef", 4), None);
     }
 
     #[test]
     fn pane_border_title_truncates_cjk_by_display_width() {
-        let title = pane_border_title("1 模块组织（已定）", 12, false).unwrap();
+        let title = pane_border_title("1 模块组织（已定）", 12).unwrap();
 
         assert_eq!(title, " 1 模块… ");
         assert!(display_width(title.as_str()) <= 10);
+    }
+
+    #[test]
+    fn pane_border_title_parts_reserve_space_for_status() {
+        let (title, status) =
+            pane_border_title_parts(Some("claude"), Some(PaneBorderStatus::Running(0)), 30)
+                .unwrap();
+
+        assert_eq!(title, " claude ");
+        assert_eq!(status.as_deref(), Some(" ◐ running "));
+        assert!(display_width(&title) + display_width(status.as_deref().unwrap()) < 28);
+    }
+
+    #[test]
+    fn pane_border_running_status_rotates_spinner_frame() {
+        assert_eq!(PaneBorderStatus::Running(0).label(), "◐ running");
+        assert_eq!(PaneBorderStatus::Running(2).label(), "◑ running");
+    }
+
+    #[test]
+    fn pane_border_status_uses_agent_lifecycle_state() {
+        let mut terminal = TerminalState::new(crate::terminal::TerminalId::alloc(), "/tmp".into());
+        terminal.set_agent_name("codex".into());
+
+        terminal.state = crate::detect::AgentState::Working;
+        assert!(matches!(
+            pane_border_status(&terminal, 0),
+            Some(PaneBorderStatus::Running(0))
+        ));
+
+        terminal.state = crate::detect::AgentState::Idle;
+        assert!(matches!(
+            pane_border_status(&terminal, 0),
+            Some(PaneBorderStatus::Idle)
+        ));
+
+        terminal.state = crate::detect::AgentState::Unknown;
+        assert!(matches!(
+            pane_border_status(&terminal, 0),
+            Some(PaneBorderStatus::Unknown)
+        ));
+
+        terminal.state = crate::detect::AgentState::Blocked;
+        assert!(matches!(
+            pane_border_status(&terminal, 0),
+            Some(PaneBorderStatus::Blocked)
+        ));
     }
 
     #[test]
@@ -1028,7 +1172,7 @@ mod tests {
             inner_rect: Rect::default(),
             scrollbar_rect: None,
             borders: Borders::ALL,
-            is_focused: false,
+            is_focused: true,
         }];
 
         let terminal_id = ws.tabs[0].panes[&pane_id].attached_terminal_id.clone();
@@ -1038,14 +1182,111 @@ mod tests {
 
         let mut terminal =
             ratatui::Terminal::new(ratatui::backend::TestBackend::new(12, 3)).unwrap();
-        terminal
-            .draw(|frame| render_view_pane_borders(&app, &ws, &[], frame))
-            .unwrap();
+        let background = Color::Rgb(12, 23, 34);
+        for focused in [true, false] {
+            app.view.pane_infos[0].is_focused = focused;
+            terminal
+                .draw(|frame| {
+                    frame
+                        .buffer_mut()
+                        .set_style(app.view.terminal_area, Style::default().bg(background));
+                    render_view_pane_borders(&app, &ws, &[], frame);
+                })
+                .unwrap();
 
-        let buffer = terminal.backend().buffer();
-        assert_eq!(buffer[(4, 0)].symbol(), "模");
-        assert_eq!(buffer[(5, 0)].symbol(), " ");
-        assert_eq!(buffer[(6, 0)].symbol(), "块");
+            let buffer = terminal.backend().buffer();
+            assert_eq!(buffer[(6, 0)].symbol(), "模");
+            assert_eq!(buffer[(7, 0)].symbol(), " ");
+            assert_eq!(buffer[(8, 0)].symbol(), "块");
+            assert_eq!(
+                buffer[(1, 0)].fg,
+                if focused {
+                    app.palette.accent
+                } else {
+                    app.palette.overlay0
+                }
+            );
+            for x in [0, 1, 2, 3, 4, 5, 6, 8, 11] {
+                assert_eq!(buffer[(x, 0)].bg, background);
+            }
+            assert!(!buffer[(1, 0)].modifier.contains(Modifier::BOLD));
+        }
+    }
+
+    #[test]
+    fn pane_border_corners_are_rounded() {
+        for (up, down, left, right, symbol) in [
+            (false, true, false, true, "╭"),
+            (false, true, true, false, "╮"),
+            (true, false, false, true, "╰"),
+            (true, false, true, false, "╯"),
+        ] {
+            assert_eq!(
+                line_cell_symbol(LineCell {
+                    up,
+                    down,
+                    left,
+                    right,
+                }),
+                symbol
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn unselected_pane_keeps_terminal_content_undimmed() {
+        let mut app = AppState::test_new();
+        let mut workspace = Workspace::test_new("test");
+        let focused_pane = workspace.tabs[0].root_pane;
+        let unselected_pane = workspace.test_split(Direction::Horizontal);
+        workspace.tabs[0].layout.focus_pane(focused_pane);
+        workspace.insert_test_runtime(
+            focused_pane,
+            TerminalRuntime::test_with_screen_bytes(20, 8, b"focused"),
+        );
+        workspace.insert_test_runtime(
+            unselected_pane,
+            TerminalRuntime::test_with_screen_bytes(20, 8, b"unselected"),
+        );
+        app.workspaces = vec![workspace];
+        app.active = Some(0);
+        app.pane_borders = PaneBordersConfig::Always;
+        app.pane_gaps = true;
+        app.pane_scrollbars = false;
+
+        let area = Rect::new(0, 0, 40, 8);
+        let runtimes = TerminalRuntimeRegistry::new();
+        let pane_infos = compute_pane_infos(
+            &app,
+            &runtimes,
+            area,
+            false,
+            crate::kitty_graphics::HostCellSize::default(),
+        );
+        let unselected = pane_infos
+            .iter()
+            .find(|info| info.id == unselected_pane)
+            .expect("unselected pane");
+        let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(40, 8))
+            .expect("test terminal");
+        terminal
+            .draw(|frame| {
+                render_panes(
+                    &app,
+                    &runtimes,
+                    frame,
+                    Some(crate::ui::tab_surface::TabSurfaceTarget {
+                        workspace_index: 0,
+                        tab_index: 0,
+                    }),
+                    &pane_infos,
+                    &[],
+                );
+            })
+            .expect("render panes");
+
+        let cell = &terminal.backend().buffer()[(unselected.inner_rect.x, unselected.inner_rect.y)];
+        assert!(!cell.modifier.contains(Modifier::DIM));
     }
 
     #[test]
@@ -1268,6 +1509,10 @@ mod tests {
         assert_eq!(buffer[(2, 2)].style().fg, Some(app.palette.accent));
         assert_eq!(buffer[(2, 1)].symbol(), "│");
         assert_eq!(buffer[(2, 1)].style().fg, Some(app.palette.accent));
+        assert!(buffer
+            .content()
+            .iter()
+            .all(|cell| !cell.style().add_modifier.contains(Modifier::BOLD)));
     }
 
     #[test]
@@ -1304,6 +1549,23 @@ mod tests {
         let buffer = terminal.backend().buffer();
         assert_eq!(buffer[(1, 1)].style().fg, Some(app.palette.accent));
         assert_eq!(buffer[(2, 1)].style().fg, Some(app.palette.overlay0));
+        assert_eq!(buffer[(1, 1)].symbol(), "│");
+        assert_eq!(buffer[(2, 1)].symbol(), "│");
+        let before = buffer.clone();
+        for info in &mut app.view.pane_infos {
+            info.is_focused = !info.is_focused;
+        }
+        terminal
+            .draw(|frame| render_view_pane_borders(&app, &ws, &[], frame))
+            .unwrap();
+        let after = terminal.backend().buffer();
+        assert_eq!(after[(1, 1)].fg, app.palette.overlay0);
+        assert_eq!(after[(2, 1)].fg, app.palette.accent);
+        for (before, after) in before.content().iter().zip(after.content()) {
+            let mut expected = before.clone();
+            expected.fg = after.fg;
+            assert_eq!(&expected, after);
+        }
     }
 
     #[tokio::test]
