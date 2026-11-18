@@ -40,6 +40,7 @@ pub(super) fn render_lifecycle_banner(
         .saturating_add(top_offset)
         .min(area.bottom().saturating_sub(1));
     let rect = Rect::new(area.right().saturating_sub(width), y, width, 1);
+    crate::ui::split_wide_cells_at_vertical_edges(buffer, rect);
     Clear.render(rect, buffer);
     buffer.set_style(rect, Style::default().bg(palette.surface0));
     super::render::put_text(

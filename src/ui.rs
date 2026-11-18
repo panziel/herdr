@@ -8,6 +8,7 @@ mod sidebar;
 mod status;
 mod tab_surface;
 mod text;
+mod wide_cells;
 mod widgets;
 
 pub(crate) use self::onboarding::{
@@ -44,6 +45,7 @@ pub(crate) use self::tab_surface::{
     tab_surface_cursor, tab_surface_hyperlinks, TabSurfaceLayout, TabSurfaceTarget, TabSurfaceView,
 };
 pub(crate) use self::text::truncate_end;
+pub(crate) use self::wide_cells::split_wide_cells_at_vertical_edges;
 pub(crate) use self::widgets::{centered_popup_rect, modal_stack_areas};
 
 use crate::app::AppState;

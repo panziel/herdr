@@ -227,6 +227,7 @@ fn panel(
     if a.width < 2 || a.height < 2 {
         return None;
     }
+    crate::ui::split_wide_cells_at_vertical_edges(b, a);
     let background = Style::default().bg(bg).remove_modifier(Modifier::DIM);
     let border = Style::default().fg(c).bg(bg).remove_modifier(Modifier::DIM);
     for y in a.y..a.bottom() {

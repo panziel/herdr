@@ -603,6 +603,7 @@ impl ClientShellState {
                     .border_style(ratatui::style::Style::default().fg(self.config.palette.accent))
                     .title(popup.title.clone())
                     .style(ratatui::style::Style::default().bg(self.config.palette.panel_bg));
+                crate::ui::split_wide_cells_at_vertical_edges(&mut composed, geometry.outer);
                 ratatui::widgets::Widget::render(
                     ratatui::widgets::Clear,
                     geometry.outer,

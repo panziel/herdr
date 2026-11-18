@@ -60,6 +60,7 @@ pub(crate) fn render_copy_feedback_buffer(
         return feedback_area;
     }
 
+    super::split_wide_cells_at_vertical_edges(buffer, feedback_area);
     Clear.render(feedback_area, buffer);
     let block = Block::default()
         .borders(Borders::ALL)

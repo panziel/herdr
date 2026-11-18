@@ -670,6 +670,7 @@ pub(super) fn render_panes(
         return;
     };
     for info in floating {
+        super::split_wide_cells_at_vertical_edges(frame.buffer_mut(), info.rect);
         frame.render_widget(ratatui::widgets::Clear, info.rect);
         render_floating_pane_frame(app, ws, tab, info, frame);
         render_pane_content(app, terminal_runtimes, frame, ws_idx, ws, target, info);
@@ -1306,6 +1307,80 @@ mod tests {
             .map(|x| buffer[(x, pin.y)].symbol().to_owned())
             .collect();
         assert_eq!(label, crate::workspace::floating::pin_button_label(false));
+    }
+
+    #[tokio::test]
+    async fn floating_pane_edges_split_background_wide_characters_cleanly() {
+        let mut workspace = Workspace::test_new("floating");
+        let root = workspace.tabs[0].root_pane;
+        workspace.test_add_floating(true);
+        // Alternating one-column offsets put a wide lead on each side of both
+        // vertical edges of the floating pane, whatever its exact geometry.
+        let screen = (0..24)
+            .map(|row| {
+                let lead = if row % 2 == 1 { " " } else { "" };
+                format!("{lead}{}", "果".repeat(30))
+            })
+            .collect::<Vec<_>>()
+            .join("\r\n");
+        workspace.insert_test_runtime(
+            root,
+            TerminalRuntime::test_with_screen_bytes(80, 24, screen.as_bytes()),
+        );
+        let mut app = AppState::test_new();
+        app.workspaces = vec![workspace];
+        app.active = Some(0);
+        app.ensure_test_terminals();
+        let runtimes = TerminalRuntimeRegistry::new();
+        let area = Rect::new(0, 0, 80, 24);
+        let layout = crate::ui::compute_tab_surface_for(
+            &app,
+            &runtimes,
+            Some(crate::ui::TabSurfaceTarget {
+                workspace_index: 0,
+                tab_index: 0,
+            }),
+            area,
+            false,
+            Default::default(),
+        );
+
+        let surface = crate::ui::TabSurfaceView {
+            target: layout.target,
+            pane_infos: &layout.pane_infos,
+            split_borders: &layout.split_borders,
+        };
+        let mut terminal =
+            ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, 24)).unwrap();
+        let mut composed = None;
+        terminal
+            .draw(|frame| {
+                crate::ui::render_tab_surface(&app, &runtimes, surface, frame);
+                composed = Some(frame.buffer_mut().clone());
+            })
+            .unwrap();
+        let composed = composed.unwrap();
+        let shown = terminal.backend().buffer();
+
+        let rect = crate::workspace::FloatingRect::default().resolve(area);
+        for y in rect.top()..rect.bottom() {
+            assert!(
+                display_width(composed[(rect.x - 1, y)].symbol()) <= 1,
+                "a wide character left of the floating pane at row {y} would cover its edge"
+            );
+            assert_ne!(
+                composed[(rect.right(), y)].symbol(),
+                "",
+                "the spacer tail right of the floating pane at row {y} lost its wide lead"
+            );
+            for x in [rect.x, rect.right() - 1] {
+                assert_eq!(
+                    shown[(x, y)].symbol(),
+                    composed[(x, y)].symbol(),
+                    "the floating pane edge at ({x}, {y}) must reach the screen"
+                );
+            }
+        }
     }
 
     #[test]

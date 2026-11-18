@@ -1093,3 +1093,34 @@ fn plain_workspace_list_does_not_hover() {
     })]);
     assert!(state.hovered_card.is_none());
 }
+
+#[test]
+fn context_menu_edges_split_background_wide_characters_cleanly() {
+    let palette = ClientShellConfig::from_config(&Config::default()).palette;
+    let menu = ClientContextMenuOverlay {
+        target: ClientContextMenuTarget::Tab {
+            tab_id: "tab_1".into(),
+            workspace_id: "ws_1".into(),
+        },
+        x: 35,
+        y: 8,
+        highlighted: 0,
+    };
+    let mut buffer = Buffer::empty(Rect::new(0, 0, 106, 40));
+    for y in 8..20 {
+        buffer.set_string(34, y, "果", Style::default());
+    }
+
+    let rendered = render::render_context_menu(&mut buffer, &menu, &palette).expect("menu");
+
+    let area = rendered.area;
+    assert_eq!(area.x, 35);
+    for y in area.top()..area.bottom() {
+        assert_eq!(
+            buffer[(34, y)].symbol(),
+            " ",
+            "a wide character left of the menu at row {y} would cover its edge"
+        );
+        assert_ne!(buffer[(area.x, y)].symbol(), " ", "menu edge at row {y}");
+    }
+}

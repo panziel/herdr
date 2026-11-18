@@ -26,6 +26,7 @@ pub(super) fn render_mobile_notice_banner(
             .saturating_sub(1u16.saturating_add(warning_offset));
     let rect = Rect::new(area.x, y, area.width, 1);
     let background = palette.surface0;
+    crate::ui::split_wide_cells_at_vertical_edges(buffer, rect);
     Clear.render(rect, buffer);
     buffer.set_style(rect, Style::default().bg(background));
     let mut x = rect.x;
@@ -141,6 +142,7 @@ pub(super) fn render_notification_card(
     }
     .clamp(area.y, max_y);
     let rect = Rect::new(x, y, width, height);
+    crate::ui::split_wide_cells_at_vertical_edges(buffer, rect);
     Clear.render(rect, buffer);
     let block = Block::default()
         .borders(Borders::ALL)
