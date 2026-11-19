@@ -249,6 +249,7 @@ fn surface_with_popup() -> PaneSurfaceFrame {
 
 mod agent_animation;
 mod agent_cards;
+mod agent_icons;
 mod agents_worktrees_notifications;
 mod chrome_context;
 mod close_pane;

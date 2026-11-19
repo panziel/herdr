@@ -348,7 +348,7 @@ const DEFAULT_CONFIG: &str = r##"# herdr configuration
 # Accepts: hex (#89b4fa), named colors (cyan, blue, magenta), or rgb(r,g,b)
 # accent = "cyan"
 
-# Expanded agent rows. Built-ins are state_icon, state_text, machine, workspace, tab,
+# Expanded agent rows. Built-ins are state_icon, agent_icon, state_text, machine, workspace, tab,
 # pane, agent, terminal_title, and terminal_title_stripped.
 # Custom values reported through pane metadata use a $name token.
 # A token occurrence may be styled with { token = "workspace", fg = "#89b4fa", bold = true, dim = false }.
@@ -356,7 +356,10 @@ const DEFAULT_CONFIG: &str = r##"# herdr configuration
 # [ui.sidebar.agents]
 # Blank rows between agent entries. Set to 1 to restore the previous spacing.
 # row_gap = 0
-# rows = [["state_icon", "machine", "workspace", "tab"], ["agent"]]
+# Built-in agent icons in the Agents panel and pane border titles, shown in kitty or Ghostty
+# (Kitty Unicode placeholders). Other terminals, tmux, and screen never show them. Set to false to hide them everywhere.
+# icons = true
+# rows = [["state_icon", "machine", "workspace", "tab"], ["agent_icon", "agent"]]
 # Optional canonical agent IDs replace the default rows for matching agents.
 # [ui.sidebar.agents.rows_by_agent]
 # claude = [["state_icon", "machine", "workspace", "tab"], ["terminal_title_stripped"], ["agent"]]

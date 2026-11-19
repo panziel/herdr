@@ -11,12 +11,18 @@ use base64::Engine as _;
 pub(crate) struct ComposedFrame {
     pub(crate) frame: FrameData,
     pub(crate) graphics: GraphicsOutput,
+    /// 帧内占位符引用的智能体图标；呈现时补传宿主终端尚未持有的图片。
+    pub(crate) agent_icons: Vec<super::agent_icons::AgentIconImage>,
 }
 
 impl From<FrameData> for ComposedFrame {
     fn from(mut frame: FrameData) -> Self {
         let graphics = GraphicsOutput::from_bytes(std::mem::take(&mut frame.graphics));
-        Self { frame, graphics }
+        Self {
+            frame,
+            graphics,
+            agent_icons: Vec::new(),
+        }
     }
 }
 

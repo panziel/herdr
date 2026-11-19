@@ -172,7 +172,11 @@ impl ClientShellState {
                     && self.navigation_target_valid(&pending.target)
             });
         if self.snapshot.is_none() || self.pane_surface.is_none() {
-            return Some(self.compose_unavailable(cols, rows).into());
+            let mut composed = crate::client::frame_output::ComposedFrame::from(
+                self.compose_unavailable(cols, rows),
+            );
+            composed.agent_icons = std::mem::take(&mut self.hits.agent_icon_images);
+            return Some(composed);
         }
         let snapshot = self.snapshot.as_deref()?;
         // Do not compose a retained surface while waiting for its matching snapshot or
@@ -361,6 +365,7 @@ impl ClientShellState {
             frame.cells[start..start + usize::from(bar.width)].to_vec()
         });
         blit_pane_surface(&mut frame, &surface.frame, layout.pane_surface);
+        pane_icons::render_pane_title_icons(&mut frame, &mut self.hits, snapshot, &self.config);
         self.render_pane_hover(&mut frame);
         self.render_card_hover(&mut frame);
         restore_mode_bar(&mut frame, mode_bar, mode_bar_cells.as_deref());
@@ -757,7 +762,11 @@ impl ClientShellState {
         }
         let graphics = self.compose_graphics(layout, &occlusion);
         self.sync_agent_animation(&mut frame);
-        Some(crate::client::frame_output::ComposedFrame { frame, graphics })
+        Some(crate::client::frame_output::ComposedFrame {
+            frame,
+            graphics,
+            agent_icons: std::mem::take(&mut self.hits.agent_icon_images),
+        })
     }
 }
 

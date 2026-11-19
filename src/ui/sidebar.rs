@@ -7,8 +7,8 @@ use ratatui::{
 };
 
 pub(crate) use self::tokens::{
-    agent_rows as sidebar_agent_rows, space_rows as sidebar_space_rows, AgentTokenContext,
-    ResolvedToken, ResolvedTokenKind, SpaceTokenContext,
+    agent_rows as sidebar_agent_rows, space_rows as sidebar_space_rows, AgentIconGlyph,
+    AgentTokenContext, ResolvedToken, ResolvedTokenKind, SpaceTokenContext,
 };
 use super::text::{display_width, truncate_end};
 use crate::app::state::Palette;
@@ -118,6 +118,7 @@ pub(crate) fn resolved_token_spans(
         .iter()
         .map(|token| match &token.kind {
             ResolvedTokenKind::StateIcon => display_width(state_icon.0),
+            ResolvedTokenKind::AgentIcon(glyph) => display_width(&glyph.text),
             ResolvedTokenKind::GitStatus { ahead, behind } => {
                 usize::from(*ahead > 0) * display_width(&format!("↑{ahead}"))
                     + usize::from(*behind > 0) * display_width(&format!("↓{behind}"))
@@ -234,6 +235,10 @@ pub(crate) fn resolved_token_spans(
                     state_icon.0.to_string(),
                     apply_token_style(state_icon.1, token.style),
                 ));
+            }
+            // 图标样式携带占位符图片 ID，不能被 token 样式覆盖。
+            ResolvedTokenKind::AgentIcon(glyph) => {
+                spans.push(Span::styled(glyph.text.clone(), glyph.style));
             }
             ResolvedTokenKind::StateText(text) => spans.push(Span::styled(
                 truncate_end(text, budgets[index]),

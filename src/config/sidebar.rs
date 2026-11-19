@@ -107,6 +107,7 @@ pub struct SidebarTokenStyle {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AgentSidebarToken {
     StateIcon,
+    AgentIcon,
     StateText,
     Machine,
     Workspace,
@@ -200,7 +201,10 @@ impl RawSidebarToken {
                     return Err("sidebar tokens may contain at most 16 rules".into());
                 }
                 if !token.rules.is_empty()
-                    && matches!(token.token.as_str(), "state_icon" | "git_status")
+                    && matches!(
+                        token.token.as_str(),
+                        "state_icon" | "agent_icon" | "git_status"
+                    )
                 {
                     return Err("sidebar rules require a text-valued token".into());
                 }
@@ -271,6 +275,7 @@ where
 fn agent_token_name(token: &AgentSidebarToken) -> String {
     match token {
         AgentSidebarToken::StateIcon => "state_icon".into(),
+        AgentSidebarToken::AgentIcon => "agent_icon".into(),
         AgentSidebarToken::StateText => "state_text".into(),
         AgentSidebarToken::Machine => "machine".into(),
         AgentSidebarToken::Workspace => "workspace".into(),
@@ -330,6 +335,7 @@ impl<'de> Deserialize<'de> for AgentSidebarToken {
             value,
             &[
                 ("state_icon", Self::StateIcon),
+                ("agent_icon", Self::AgentIcon),
                 ("state_text", Self::StateText),
                 ("machine", Self::Machine),
                 ("workspace", Self::Workspace),
@@ -428,6 +434,8 @@ pub struct AgentsSidebarConfig {
     pub rows_by_agent: BTreeMap<String, AgentSidebarRows>,
     pub row_gap: u16,
     pub card_style: SidebarCardStyle,
+    /// 在支持 Kitty Unicode 占位符的终端里，于 Agents 面板和窗格边框标题显示智能体图标（agent icon）。
+    pub icons: bool,
 }
 
 impl AgentsSidebarConfig {
@@ -448,11 +456,12 @@ impl Default for AgentsSidebarConfig {
                     AgentSidebarToken::Workspace,
                     AgentSidebarToken::Tab,
                 ],
-                vec![AgentSidebarToken::Agent],
+                vec![AgentSidebarToken::AgentIcon, AgentSidebarToken::Agent],
             ],
             rows_by_agent: BTreeMap::new(),
             row_gap: DEFAULT_SIDEBAR_ROW_GAP,
             card_style: SidebarCardStyle::Plain,
+            icons: true,
         }
     }
 }
@@ -511,12 +520,13 @@ mod tests {
                     AgentSidebarToken::Workspace,
                     AgentSidebarToken::Tab,
                 ],
-                vec![AgentSidebarToken::Agent],
+                vec![AgentSidebarToken::AgentIcon, AgentSidebarToken::Agent],
             ]
         );
         assert!(config.agents.rows_by_agent.is_empty());
         assert_eq!(config.agents.row_gap, 0);
         assert_eq!(config.agents.card_style, SidebarCardStyle::Plain);
+        assert!(config.agents.icons);
         assert_eq!(
             config.spaces.rows,
             vec![
@@ -526,6 +536,26 @@ mod tests {
         );
         assert_eq!(config.spaces.row_gap, 0);
         assert_eq!(config.spaces.card_style, SidebarCardStyle::Plain);
+    }
+
+    #[test]
+    fn agent_icons_can_be_disabled_and_the_token_roundtrips() {
+        let config: crate::config::Config = toml::from_str(
+            "[ui.sidebar.agents]\nicons = false\nrows = [[\"agent_icon\", \"agent\"]]\n",
+        )
+        .expect("agent icon config");
+        let agents = &config.ui.sidebar.agents;
+        assert!(!agents.icons);
+        assert_eq!(
+            agents.rows,
+            vec![vec![AgentSidebarToken::AgentIcon, AgentSidebarToken::Agent]]
+        );
+        let encoded = toml::to_string(agents).unwrap();
+        assert_eq!(
+            toml::from_str::<AgentsSidebarConfig>(&encoded).unwrap(),
+            *agents
+        );
+        assert!(toml::from_str::<SidebarConfig>("[spaces]\nrows = [[\"agent_icon\"]]").is_err());
     }
 
     #[test]
@@ -693,6 +723,7 @@ rows = [[{ token = "$status", rules = [{ contains = "error", bold = true }] }]]
         }
         for (section, token) in [
             ("agents", "state_icon"),
+            ("agents", "agent_icon"),
             ("spaces", "state_icon"),
             ("spaces", "git_status"),
         ] {

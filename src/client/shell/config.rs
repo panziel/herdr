@@ -159,7 +159,18 @@ impl ClientShellConfig {
             preferences: preferences::ClientChromePreferences::default(),
             startup_config_diagnostic: None,
             startup_onboarding: false,
+            agent_icon_host: false,
         }
+    }
+
+    pub(crate) fn with_agent_icon_host(mut self, supported: bool) -> Self {
+        tracing::debug!(supported, "agent icon host support");
+        self.agent_icon_host = supported;
+        self
+    }
+
+    pub(super) fn agent_icons_active(&self) -> bool {
+        self.agent_icon_host && self.agents.icons
     }
 
     pub(crate) fn with_startup_config_diagnostic(mut self, diagnostic: Option<String>) -> Self {

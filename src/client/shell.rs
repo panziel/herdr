@@ -31,6 +31,7 @@ mod notification_policy;
 mod notifications;
 mod overlay_input;
 mod pane_hover;
+mod pane_icons;
 mod preferences;
 mod render;
 mod scroll;

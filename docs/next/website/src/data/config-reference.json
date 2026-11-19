@@ -1116,10 +1116,16 @@
           "values": ["plain", "compact", "full"]
         },
         {
+          "key": "ui.sidebar.agents.icons",
+          "type": "boolean",
+          "default": "true",
+          "description": "Show built-in agent icons in the Agents panel (agent_icon token and card styles) and before pane border titles. Icons use Kitty graphics Unicode placeholders and appear only in kitty or Ghostty outside tmux and screen; other terminals render the same rows without icons. Set to false to hide them everywhere."
+        },
+        {
           "key": "ui.sidebar.agents.rows",
           "type": "list of token rows",
-          "default": "[[\"state_icon\", \"machine\", \"workspace\", \"tab\"], [\"agent\"]]",
-          "description": "Default expanded Agent sidebar layout. Entries may be token strings or inline { token, fg, bold, dim, rules } style tables. Text-valued built-ins and $name metadata tokens accept up to 16 ordered rules using equals, contains, starts_with, gt, or lt; the first match overrides specified styles. Text conditions optionally accept ignore_case for ASCII matching; numeric conditions require full finite numbers. state_icon accepts fixed styles only. At most 16 rows and 16 tokens per row."
+          "default": "[[\"state_icon\", \"machine\", \"workspace\", \"tab\"], [\"agent_icon\", \"agent\"]]",
+          "description": "Default expanded Agent sidebar layout. Entries may be token strings or inline { token, fg, bold, dim, rules } style tables. Text-valued built-ins and $name metadata tokens accept up to 16 ordered rules using equals, contains, starts_with, gt, or lt; the first match overrides specified styles. Text conditions optionally accept ignore_case for ASCII matching; numeric conditions require full finite numbers. state_icon accepts fixed styles only; agent_icon accepts no rules and ignores styles. At most 16 rows and 16 tokens per row."
         },
         {
           "key": "ui.sidebar.agents.rows_by_agent",

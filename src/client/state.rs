@@ -34,6 +34,7 @@ pub(super) struct ClientState {
     /// Stateful semantic-frame encoder used when the server sends FrameData.
     pub(super) blit_encoder: render_ansi::BlitEncoder,
     pub(super) image_files: image_files::FileTransport,
+    pub(super) agent_icon_uploads: super::agent_icons::AgentIconUploads,
     pub(super) mouse_capture_active: bool,
     pub(super) endpoint_mouse_capture_requested: bool,
     pub(super) endpoint_sgr_pixels_requested: bool,
@@ -105,6 +106,7 @@ impl ClientState {
         Self {
             blit_encoder: render_ansi::BlitEncoder::new(),
             image_files: image_files::FileTransport::default(),
+            agent_icon_uploads: Default::default(),
             mouse_capture_active: false,
             endpoint_mouse_capture_requested: false,
             endpoint_sgr_pixels_requested: false,
@@ -564,7 +566,10 @@ impl ClientState {
         let frame_output::ComposedFrame {
             frame: mut frame_data,
             graphics,
+            agent_icons,
         } = frame_data.into();
+        let (icon_uploads, uploaded_icon_ids) =
+            self.agent_icon_uploads.encode_pending(&agent_icons);
         // With capture enabled, host OSC 8 can intercept Ctrl-click before plugins.
         // Keep semantic links internally and restore native links when capture is off.
         if self.shell_mouse_capture_preference {
@@ -581,11 +586,14 @@ impl ClientState {
         } else {
             self.blit_encoder.encode(&frame_data, self.repaint_pending)
         };
-        if let Err(error) = self.write_composed_output(writer, &encoded.bytes, graphics) {
+        let written = super::agent_icons::write_uploads(writer, &icon_uploads)
+            .and_then(|()| self.write_composed_output(writer, &encoded.bytes, graphics));
+        if let Err(error) = written {
             tracing::warn!(%error, "failed to present client frame");
             self.repaint_pending = true;
             return false;
         }
+        self.agent_icon_uploads.mark_uploaded(&uploaded_icon_ids);
         self.blit_encoder.commit(frame_data, encoded);
         self.repaint_pending = false;
         true
@@ -856,5 +864,64 @@ mod native_cleanup_tests {
             String::from_utf8(output).unwrap().matches("a=d,").count(),
             1
         );
+    }
+}
+
+#[cfg(test)]
+mod agent_icon_present_tests {
+    use super::*;
+    use crate::client::agent_icons::{AgentIconImage, AgentIconTone};
+
+    fn frame_with_icon(image: AgentIconImage) -> frame_output::ComposedFrame {
+        let mut buffer = ratatui::buffer::Buffer::empty(ratatui::layout::Rect::new(0, 0, 4, 1));
+        let glyph = crate::client::agent_icons::AgentIconSlot::Image(image).glyph();
+        buffer.set_string(0, 0, &glyph.text, glyph.style);
+        let mut composed = frame_output::ComposedFrame::from(
+            crate::protocol::FrameData::from_ratatui_buffer_with_hyperlinks(&buffer, None, &[]),
+        );
+        composed.agent_icons = vec![image];
+        composed
+    }
+
+    #[test]
+    fn icons_upload_before_the_first_frame_that_uses_them_and_only_once() {
+        let image =
+            AgentIconImage::for_agent(crate::detect::Agent::Claude, AgentIconTone::Dark).unwrap();
+        let mut state = ClientState::test_new();
+
+        let mut first = Vec::new();
+        assert!(state.try_present_frame_to(&mut first, frame_with_icon(image)));
+        let text = String::from_utf8_lossy(&first);
+        let upload = text.find("\x1b_Ga=T,U=1,f=100").expect("icon upload");
+        assert_eq!(upload, 0, "upload precedes the frame text");
+        // 编码器在非 ASCII 单元格后用光标定位续写，所以两格分别检查；列号由各自的变音符给出。
+        let first_cell = text
+            .find("\u{10EEEE}\u{0305}\u{0305}")
+            .expect("first placeholder cell reaches the terminal");
+        let second_cell = text
+            .find("\u{10EEEE}\u{0305}\u{030D}")
+            .expect("second placeholder cell reaches the terminal");
+        assert!(upload < first_cell && first_cell < second_cell);
+        assert!(
+            text.contains("38;2;241;0;2"),
+            "image id in the foreground color"
+        );
+
+        let mut second = Vec::new();
+        assert!(state.try_present_frame_to(&mut second, frame_with_icon(image)));
+        assert!(!String::from_utf8_lossy(&second).contains("a=T,U=1"));
+    }
+
+    #[test]
+    fn failed_presentation_retries_the_upload() {
+        let image =
+            AgentIconImage::for_agent(crate::detect::Agent::Claude, AgentIconTone::Dark).unwrap();
+        let mut state = ClientState::test_new();
+        let mut no_capacity = &mut [][..];
+        assert!(!state.try_present_frame_to(&mut no_capacity, frame_with_icon(image)));
+
+        let mut output = Vec::new();
+        assert!(state.try_present_frame_to(&mut output, frame_with_icon(image)));
+        assert!(String::from_utf8_lossy(&output).contains("a=T,U=1"));
     }
 }

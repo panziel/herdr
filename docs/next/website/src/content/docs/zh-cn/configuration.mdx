@@ -368,9 +368,10 @@ status_indicators = "symbols"
 [ui.sidebar.agents]
 row_gap = 0
 card_style = "plain"
+icons = true
 rows = [
   ["state_icon", "machine", "workspace", "tab"],
-  ["agent"],
+  ["agent_icon", "agent"],
 ]
 
 [ui.sidebar.spaces]
@@ -385,6 +386,7 @@ rows = [
 Agent 行支持以下内置 token：
 
 - `state_icon` — 智能体语义状态的彩色图标。
+- `agent_icon` — 检测到的智能体的内置图标，占两格宽。图标关闭或终端无法显示时省略；没有内置图标的智能体显示两格空白，名称保持对齐。
 - `state_text` — `idle`、`working`、`blocked`、`done` 或 `unknown`；如果报告中包含显示标签，也会一并显示。
 - `machine` — 客户端连接多台机器时显示机器标签；只有一台本地机器时省略。
 - `workspace` — 工作区名称。
@@ -404,7 +406,7 @@ Space 行支持以下内置 token：
 - `git_status` — 非零时显示 Git ahead 和 behind 数量。
 - `$name` — 名为 `name` 的自定义工作区元数据。
 
-token 会按配置顺序渲染。Herdr 通常使用 ` · ` 分隔相邻值，并在 `state_icon` 后使用一个空格。缺失值及其分隔符会消失；当一行中的所有 token 都没有值时，该行会消失。已有的自定义行不会改变；如果希望在自定义的多机器布局中显示机器标识，请显式添加 `machine`。每个布局最多可包含 16 行，每行最多可包含 16 个 token。
+token 会按配置顺序渲染。Herdr 通常使用 ` · ` 分隔相邻值，并在 `state_icon` 和 `agent_icon` 后使用一个空格。缺失值及其分隔符会消失；当一行中的所有 token 都没有值时，该行会消失。已有的自定义行不会改变；如果希望在自定义的多机器布局中显示机器标识，请显式添加 `machine`。每个布局最多可包含 16 行，每行最多可包含 16 个 token。
 
 也可以用内联样式表定义 token：
 
@@ -435,13 +437,15 @@ rows = [
 
 `gt` 和 `lt` 接受有限数值阈值，分别进行严格大于和小于比较，不包含等于。整个值必须能解析为有限数值；支持小数和指数形式，但带空白、单位、`NaN` 或无穷大的值不会匹配。数值规则不接受 `ignore_case`。比较使用浮点数，不保证大整数的精确比较。
 
-规则适用于 Agent 行、`rows_by_agent` 覆盖和 Space 行中的文本值内置 token 及自定义 `$name` token。上例中，`$load` 报告 `"90"` 时显示红色粗体，`"60"` 时显示黄色，`"90%"` 时保持白色。未报告的 token 仍然不显示。`state_icon` 和复合 token `git_status` 仅接受固定样式，不支持规则。未知条件或格式错误的规则会在加载配置时被拒绝；不支持正则表达式、模糊匹配或脚本。
+规则适用于 Agent 行、`rows_by_agent` 覆盖和 Space 行中的文本值内置 token 及自定义 `$name` token。上例中，`$load` 报告 `"90"` 时显示红色粗体，`"60"` 时显示黄色，`"90%"` 时保持白色。未报告的 token 仍然不显示。`state_icon` 和复合 token `git_status` 仅接受固定样式，不支持规则。`agent_icon` 不支持规则，并忽略样式。未知条件或格式错误的规则会在加载配置时被拒绝；不支持正则表达式、模糊匹配或脚本。
 
 `row_gap` 分别控制 Agent 和 Space 面板中条目之间的空白终端行数。默认值为 `0`，会紧密排列条目；设为 `1` 可恢复之前的间距。它不会在 `rows` 声明的内容行之间添加间距。连续缩进的 worktree 子项仍会作为一个 Space 组紧密排列。
 
 `card_style` 选择 Space 侧栏的卡片形状：`plain`（默认）保持上面的 token 模板列表，用背景填充表示选中；`compact` 把每个 Space 画成 3 行圆角卡片（名称占内容行，分支画在上边框并保留左边距，无分支时不画标题）；`full` 画 4 行圆角卡片、分支单独一行，无分支时退化为 3 行。缺少分支时不显示占位文字。`compact` 和 `full` 的选中/聚焦高亮是强调色的卡片边框而非背景填充，鼠标悬停未选中卡片时边框会像窗格悬停一样变色；内容固定（忽略 `rows` 模板），缩进的 worktree 子项渲染为独立卡片。
 
-`[ui.sidebar.agents]` 接受同样的 `card_style` 取值。`compact` 把每个智能体画成 3 行卡片：所属 space 名画在上边框（保留左边距），内容行是状态图标、智能体名称、` · ` 与机器/标签页上下文（显示时），状态文字右对齐；`full` 画 4 行卡片，位置（机器、工作区，以及显示时的标签页）单独一行。聚焦的智能体使用强调色边框，悬停其他卡片时边框变色。Agent 卡片同样忽略 `rows` 和 `rows_by_agent`。所有样式下，状态文字（`running`、`input`、`done`、`idle`、`unknown`）只使用状态色，不带背景。
+`[ui.sidebar.agents]` 接受同样的 `card_style` 取值。`compact` 把每个智能体画成 3 行卡片：所属 space 名画在上边框（保留左边距），内容行是状态图标、智能体名称、` · ` 与机器/标签页上下文（显示时），状态文字右对齐；`full` 画 4 行卡片，位置（机器、工作区，以及显示时的标签页）单独一行。聚焦的智能体使用强调色边框，悬停其他卡片时边框变色。Agent 卡片同样忽略 `rows` 和 `rows_by_agent`；图标开启时，智能体图标画在状态图标与名称之间。所有样式下，状态文字（`running`、`input`、`done`、`idle`、`unknown`）只使用状态色，不带背景。
+
+`icons` 控制 Agents 面板和窗格边框中的内置智能体图标。窗格边框有足够空间时，正在运行的智能体图标显示在窗格标题之前。图标使用 Kitty 图形协议的 Unicode 占位符，只在外层终端是 kitty 或 Ghostty、且 Herdr 不在 tmux 或 screen 中运行时显示；其他终端显示同样的行，只是没有图标。设为 `icons = false` 可在所有终端中隐藏图标，重载配置后生效。单色品牌图标会随主题切换浅色或深色版本。图标来自 [LobeHub Icons](https://github.com/lobehub/lobe-icons)（MIT 许可），pi 图标取自 [pi.dev](https://pi.dev/press-kit) 标志（MIT 许可）。
 
 在 `rows_by_agent` 下为已知智能体覆盖完整的 Agent 布局：
 

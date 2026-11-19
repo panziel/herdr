@@ -51,6 +51,8 @@ pub(crate) struct ClientShellConfig {
     pub(super) preferences: preferences::ClientChromePreferences,
     pub(super) startup_config_diagnostic: Option<String>,
     pub(super) startup_onboarding: bool,
+    /// 宿主终端支持 Kitty Unicode 占位符，启动时探测一次，不随配置重载变化。
+    pub(super) agent_icon_host: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -97,6 +99,8 @@ pub(super) struct ShellHitMap {
     pub(super) pane_splits: Vec<PaneSplitHit>,
     pub(super) agents: Vec<(Rect, String)>,
     pub(super) agent_indicators: Vec<super::agent_animation::AgentIndicator>,
+    /// 本帧画出的智能体图标，呈现前需确保已上传到宿主终端。
+    pub(super) agent_icon_images: Vec<crate::client::agent_icons::AgentIconImage>,
     pub(super) endpoint_agents: Vec<(Rect, ClientEndpointId, String)>,
     pub(super) agent_body: Rect,
     pub(super) agent_scrollbar: Rect,

@@ -12,6 +12,7 @@
 //! - Forwards OSC 52 clipboard writes from server to its own stdout
 //! - Displays sound/toast notifications forwarded from server
 
+pub(crate) mod agent_icons;
 mod attach;
 mod catalog_reload;
 mod clipboard_forwarding;
@@ -200,6 +201,7 @@ fn run_client_with_mode(
             .with_startup_onboarding(loaded_config.config.should_show_onboarding())
             .with_keybinding_source(keybinding_source)
             .with_process_endpoint_preferences(&socket_path)
+            .with_agent_icon_host(agent_icons::host_supports_placeholders())
     });
     let mouse_capture = loaded_config.config.ui.mouse_capture;
     let mouse_scroll_lines = loaded_config.config.ui.mouse_scroll_lines();
@@ -456,6 +458,7 @@ async fn run_client_loop(
     let mut state = ClientState {
         blit_encoder: render_ansi::BlitEncoder::new(),
         image_files: image_files::FileTransport::from_environment(),
+        agent_icon_uploads: Default::default(),
         mouse_capture_active: config.mouse_capture_active,
         endpoint_mouse_capture_requested: false,
         endpoint_sgr_pixels_requested: false,

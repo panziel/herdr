@@ -12,6 +12,7 @@ pub(crate) struct ResolvedToken {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ResolvedTokenKind {
     StateIcon,
+    AgentIcon(AgentIconGlyph),
     StateText(String),
     Machine(String),
     Workspace(String),
@@ -36,9 +37,16 @@ impl ResolvedTokenKind {
             | Self::TerminalTitle(value)
             | Self::Branch(value)
             | Self::Custom(value) => Some(value),
-            Self::StateIcon | Self::GitStatus { .. } => None,
+            Self::StateIcon | Self::AgentIcon(_) | Self::GitStatus { .. } => None,
         }
     }
+}
+
+/// 智能体图标（agent icon）在侧栏行内的固定宽度文本及其样式，由渲染端按宿主终端能力生成。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct AgentIconGlyph {
+    pub(crate) text: String,
+    pub(crate) style: ratatui::style::Style,
 }
 
 impl ResolvedToken {
@@ -61,6 +69,8 @@ pub(crate) struct AgentTokenContext<'a> {
     pub(crate) terminal_title: Option<&'a str>,
     pub(crate) terminal_title_stripped: Option<&'a str>,
     pub(crate) canonical_agent: Option<crate::detect::Agent>,
+    /// None 表示不显示图标（已关闭或宿主终端不支持），`agent_icon` token 随之省略。
+    pub(crate) agent_icon: Option<&'a AgentIconGlyph>,
     pub(crate) tokens: &'a std::collections::HashMap<String, String>,
 }
 
@@ -79,6 +89,9 @@ pub(crate) fn agent_rows(
                     let (token, style) = configured.parts();
                     let kind = match token {
                         AgentSidebarToken::StateIcon => Some(ResolvedTokenKind::StateIcon),
+                        AgentSidebarToken::AgentIcon => context
+                            .agent_icon
+                            .map(|glyph| ResolvedTokenKind::AgentIcon(glyph.clone())),
                         AgentSidebarToken::StateText => {
                             Some(ResolvedTokenKind::StateText(state_text.to_string()))
                         }
@@ -180,8 +193,10 @@ pub(crate) fn space_rows(
 }
 
 pub(crate) fn separator(previous: &ResolvedToken, current: &ResolvedToken) -> &'static str {
-    if matches!(previous.kind, ResolvedTokenKind::StateIcon)
-        || matches!(current.kind, ResolvedTokenKind::GitStatus { .. })
+    if matches!(
+        previous.kind,
+        ResolvedTokenKind::StateIcon | ResolvedTokenKind::AgentIcon(_)
+    ) || matches!(current.kind, ResolvedTokenKind::GitStatus { .. })
     {
         " "
     } else {
@@ -228,8 +243,37 @@ mod tests {
             terminal_title: entry.terminal_title.as_deref(),
             terminal_title_stripped: entry.terminal_title_stripped.as_deref(),
             canonical_agent: entry.canonical_agent,
+            agent_icon: None,
             tokens: &entry.tokens,
         }
+    }
+
+    #[test]
+    fn agent_icon_token_resolves_only_when_a_glyph_is_provided() {
+        let config: AgentsSidebarConfig =
+            toml::from_str(r#"rows = [["state_icon", "agent_icon", "agent"]]"#).unwrap();
+        let entry = entry();
+        let without = agent_rows(&config, context(&entry), "working");
+        assert_eq!(
+            without[0]
+                .iter()
+                .map(|token| token.kind.clone())
+                .collect::<Vec<_>>(),
+            vec![
+                ResolvedTokenKind::StateIcon,
+                ResolvedTokenKind::Agent("pi".into())
+            ]
+        );
+
+        let glyph = AgentIconGlyph {
+            text: "ab".into(),
+            style: ratatui::style::Style::default().fg(ratatui::style::Color::Rgb(1, 2, 3)),
+        };
+        let mut with_icon = context(&entry);
+        with_icon.agent_icon = Some(&glyph);
+        let rows = agent_rows(&config, with_icon, "working");
+        assert_eq!(rows[0][1].kind, ResolvedTokenKind::AgentIcon(glyph.clone()));
+        assert_eq!(separator(&rows[0][1], &rows[0][2]), " ");
     }
 
     #[test]

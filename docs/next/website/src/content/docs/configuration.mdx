@@ -370,9 +370,10 @@ The expanded desktop sidebar renders each inner array in `rows` as one line. The
 [ui.sidebar.agents]
 row_gap = 0
 card_style = "plain"
+icons = true
 rows = [
   ["state_icon", "machine", "workspace", "tab"],
-  ["agent"],
+  ["agent_icon", "agent"],
 ]
 
 [ui.sidebar.spaces]
@@ -387,6 +388,7 @@ rows = [
 Agent rows accept these built-in tokens:
 
 - `state_icon` — colored icon for the agent's semantic state.
+- `agent_icon` — built-in image of the detected agent, two cells wide. Omitted when icons are off or the terminal cannot show them; agents without a built-in icon get two blank cells so names stay aligned.
 - `state_text` — `idle`, `working`, `blocked`, `done`, or `unknown`, including a reported display label when present.
 - `machine` — machine label when the client has multiple machines; omitted for a single local machine.
 - `workspace` — workspace name.
@@ -406,7 +408,7 @@ Space rows accept these built-in tokens:
 - `git_status` — Git ahead and behind counts when nonzero.
 - `$name` — custom workspace metadata named `name`.
 
-Tokens render in their configured order. Herdr normally separates adjacent values with ` · ` and uses a single space after `state_icon`. Missing values and their separators disappear; a row disappears when none of its tokens have a value. Existing custom rows remain unchanged, so add `machine` explicitly if you want machine identity in a custom multi-machine layout. Each layout may contain at most 16 rows, with at most 16 tokens in each row.
+Tokens render in their configured order. Herdr normally separates adjacent values with ` · ` and uses a single space after `state_icon` and `agent_icon`. Missing values and their separators disappear; a row disappears when none of its tokens have a value. Existing custom rows remain unchanged, so add `machine` explicitly if you want machine identity in a custom multi-machine layout. Each layout may contain at most 16 rows, with at most 16 tokens in each row.
 
 A token entry can also be an inline style table:
 
@@ -437,13 +439,15 @@ The first matching rule wins. Its specified style fields override the occurrence
 
 `gt` and `lt` take finite numeric thresholds and compare strictly greater or less, not equal. Values must parse completely as finite numbers; decimal and exponent forms work, but whitespace, units, `NaN`, and infinity do not match. `ignore_case` is not accepted on numeric rules. Comparisons use floating-point numbers, not exact large-integer arithmetic.
 
-Rules work with text-valued built-ins and custom `$name` tokens in Agent rows, `rows_by_agent` overrides, and Space rows. Custom tokens match their reported value: `$load` reporting `"90"` selects red and bold above, `"60"` selects yellow, and `"90%"` keeps white. Unreported tokens still disappear. `state_icon` and composite `git_status` accept fixed styles only, not rules. Unknown conditions and malformed rules are rejected when loading config; regex, fuzzy matching, and scripts are not supported.
+Rules work with text-valued built-ins and custom `$name` tokens in Agent rows, `rows_by_agent` overrides, and Space rows. Custom tokens match their reported value: `$load` reporting `"90"` selects red and bold above, `"60"` selects yellow, and `"90%"` keeps white. Unreported tokens still disappear. `state_icon` and composite `git_status` accept fixed styles only, not rules. `agent_icon` accepts no rules and ignores styles. Unknown conditions and malformed rules are rejected when loading config; regex, fuzzy matching, and scripts are not supported.
 
 `row_gap` controls the blank terminal rows between entries, independently for the Agent and Space panels. It defaults to `0`, which packs entries together; set it to `1` to restore the previous spacing. It does not add spacing between the content lines declared in `rows`. Consecutive indented worktree children remain packed as one Space group.
 
 `card_style` chooses the Space sidebar card shape: `plain` (default) keeps the token-template list above with background-fill selection; `compact` draws each Space as a 3-row rounded card (name on the content row, branch on the top border with a left margin, and no title when there is no branch); `full` draws a 4-row rounded card with a separate branch row and degrades to 3 rows when there is no branch. No placeholder is shown for a missing branch. In `compact` and `full` the selection/focus highlight is the card border in the accent color rather than a background fill, and hovering an unselected card tints its border like pane hover; the content is fixed (the `rows` template is ignored), and indented worktree children render as their own cards.
 
-`[ui.sidebar.agents]` accepts the same `card_style` values. `compact` draws each agent as a 3-row card with the space name on the top border (with a left margin) and the status icon, agent name, ` · ` plus machine/tab context when shown on the content row, and the status text right-aligned; `full` draws a 4-row card with the location (machine, workspace, and tab when shown) on its own row. The focused agent gets the accent border, and hovering another card tints its border. Agent cards also ignore `rows` and `rows_by_agent`. In every style the status text (`running`, `input`, `done`, `idle`, `unknown`) uses only the status color, without a background.
+`[ui.sidebar.agents]` accepts the same `card_style` values. `compact` draws each agent as a 3-row card with the space name on the top border (with a left margin) and the status icon, agent name, ` · ` plus machine/tab context when shown on the content row, and the status text right-aligned; `full` draws a 4-row card with the location (machine, workspace, and tab when shown) on its own row. The focused agent gets the accent border, and hovering another card tints its border. Agent cards also ignore `rows` and `rows_by_agent`, and show the agent icon between the status icon and the name when icons are on. In every style the status text (`running`, `input`, `done`, `idle`, `unknown`) uses only the status color, without a background.
+
+`icons` controls the built-in agent icons in the Agents panel and on pane borders, where the icon of the running agent appears before the pane title when the border has room for it. Icons use Kitty graphics Unicode placeholders, so they appear only when the outer terminal is kitty or Ghostty and Herdr is not running inside tmux or screen; other terminals show the same rows without icons. Set `icons = false` to hide them in every terminal. Changes apply on config reload. Mono-color brand icons switch between light and dark variants with the theme. The icons come from [LobeHub Icons](https://github.com/lobehub/lobe-icons) (MIT); the pi icon is the [pi.dev](https://pi.dev/press-kit) logo (MIT).
 
 Override the complete Agent layout for a known agent under `rows_by_agent`:
 

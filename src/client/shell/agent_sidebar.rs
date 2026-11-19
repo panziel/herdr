@@ -9,6 +9,7 @@ use ratatui::{
 };
 
 use super::*;
+use crate::client::agent_icons::{AgentIconSlot, AGENT_ICON_COLUMNS};
 
 pub(super) struct AgentRow {
     pub(super) pane_id: String,
@@ -16,6 +17,8 @@ pub(super) struct AgentRow {
     pub(super) focused: bool,
     pub(super) rows: Vec<Vec<crate::ui::ResolvedToken>>,
     pub(super) card: AgentCardContent,
+    /// None 表示不显示图标（配置关闭或宿主终端不支持）。
+    pub(super) icon: Option<AgentIconSlot>,
 }
 
 /// Fixed content of an Agents card; card styles ignore the `rows` template.
@@ -338,6 +341,13 @@ pub(super) fn agent_row(
         .title
         .as_deref()
         .or_else(|| pane.and_then(|pane| pane.label.as_deref()));
+    let icon = config.agent_icons_active().then(|| {
+        AgentIconSlot::for_agent(
+            canonical_agent,
+            crate::client::agent_icons::tone_for_palette(&config.palette),
+        )
+    });
+    let icon_glyph = icon.map(AgentIconSlot::glyph);
     let card = AgentCardContent {
         label: agent_label.or(pane_label).unwrap_or("agent").to_owned(),
         space: workspace.label.clone(),
@@ -355,6 +365,7 @@ pub(super) fn agent_row(
             terminal_title: agent.terminal_title.as_deref(),
             terminal_title_stripped: agent.terminal_title_stripped.as_deref(),
             canonical_agent,
+            agent_icon: icon_glyph.as_ref(),
             tokens: &tokens,
         },
         state_text,
@@ -365,6 +376,7 @@ pub(super) fn agent_row(
         focused: agent.focused,
         rows,
         card,
+        icon,
     })
 }
 
@@ -419,10 +431,20 @@ fn render_plain_agent_row(
     };
     for (index, tokens) in rows.iter().take(rect.height as usize).enumerate() {
         let indent = if index == 0 { 1 } else { 3 };
-        let badge = (rect.width >= 20
-            && tokens.len() == 1
-            && matches!(tokens[0].kind, crate::ui::ResolvedTokenKind::Agent(_)))
-        .then_some(status_badge_text(row.status));
+        let has_icon = tokens
+            .iter()
+            .any(|token| matches!(token.kind, crate::ui::ResolvedTokenKind::AgentIcon(_)));
+        if has_icon {
+            register_icon(row, hits);
+        }
+        let mut content = tokens
+            .iter()
+            .filter(|token| !matches!(token.kind, crate::ui::ResolvedTokenKind::AgentIcon(_)));
+        let agent_only = matches!(
+            (content.next(), content.next()),
+            (Some(token), None) if matches!(token.kind, crate::ui::ResolvedTokenKind::Agent(_))
+        );
+        let badge = (rect.width >= 20 && agent_only).then_some(status_badge_text(row.status));
         // One cell of gap before the status text and one cell of right margin.
         let badge_width = badge.map_or(0, |text| text.len() as u16 + 2);
         let y = rect.y + index as u16;
@@ -533,6 +555,10 @@ pub(super) fn render_agent_card(
             });
     }
     x = super::render::put_segment(buffer, x, y, text_right, " ", name_style);
+    if let Some(icon) = row.icon {
+        x = put_card_icon(buffer, x, y, text_right, icon, name_style);
+        register_icon(row, hits);
+    }
     x = super::render::put_segment(buffer, x, y, text_right, &row.card.label, name_style);
     if style == SidebarCardStyle::Compact {
         let context = row.card.context();
@@ -575,6 +601,31 @@ pub(super) fn render_agent_card(
             &location,
             secondary_style,
         );
+    }
+}
+
+/// 图标连同其后的空格完整放得下才画，避免只露出半张图。
+fn put_card_icon(
+    buffer: &mut Buffer,
+    x: u16,
+    y: u16,
+    right: u16,
+    icon: AgentIconSlot,
+    separator_style: Style,
+) -> u16 {
+    if right.saturating_sub(x) <= AGENT_ICON_COLUMNS {
+        return x;
+    }
+    let glyph = icon.glyph();
+    let x = super::render::put_segment(buffer, x, y, right, &glyph.text, glyph.style);
+    super::render::put_segment(buffer, x, y, right, " ", separator_style)
+}
+
+fn register_icon(row: &AgentRow, hits: &mut ShellHitMap) {
+    if let Some(image) = row.icon.and_then(AgentIconSlot::image) {
+        if !hits.agent_icon_images.contains(&image) {
+            hits.agent_icon_images.push(image);
+        }
     }
 }
 
