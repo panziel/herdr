@@ -50,6 +50,7 @@ pub(crate) enum KeybindAction {
     SwapPaneRight,
     SplitVertical,
     SplitHorizontal,
+    NewPane,
     ClosePane,
     EditScrollback,
     ClearPane,
@@ -147,6 +148,7 @@ pub(crate) fn resolve_non_indexed_action(
         ),
         (&keybinds.split_vertical, KeybindAction::SplitVertical),
         (&keybinds.split_horizontal, KeybindAction::SplitHorizontal),
+        (&keybinds.new_pane, KeybindAction::NewPane),
         (&keybinds.close_pane, KeybindAction::ClosePane),
         (&keybinds.zoom, KeybindAction::Zoom),
         (&keybinds.resize_mode, KeybindAction::EnterResizeMode),
@@ -309,6 +311,38 @@ mod tests {
                 &TerminalKey::new(KeyCode::Char('k'), KeyModifiers::SHIFT)
             ),
             Some(KeybindMatch::Action(KeybindAction::SwapPaneUp))
+        ));
+    }
+
+    #[test]
+    fn new_pane_is_unbound_by_default_and_configurable() {
+        let defaults = crate::config::Config::default().keybinds();
+        assert!(defaults.new_pane.bindings.is_empty());
+        assert!(!matches!(
+            resolve_prefix_binding(
+                &defaults,
+                &TerminalKey::new(KeyCode::Char('a'), KeyModifiers::empty())
+            ),
+            Some(KeybindMatch::Action(KeybindAction::NewPane))
+        ));
+
+        let config: crate::config::Config =
+            toml::from_str("[keys]\nnew_pane = [\"alt+n\", \"prefix+a\"]").unwrap();
+        assert!(config.collect_diagnostics().is_empty());
+        let keybinds = config.keybinds();
+        assert!(matches!(
+            resolve_direct_binding(
+                &keybinds,
+                &TerminalKey::new(KeyCode::Char('n'), KeyModifiers::ALT)
+            ),
+            Some(KeybindMatch::Action(KeybindAction::NewPane))
+        ));
+        assert!(matches!(
+            resolve_prefix_binding(
+                &keybinds,
+                &TerminalKey::new(KeyCode::Char('a'), KeyModifiers::empty())
+            ),
+            Some(KeybindMatch::Action(KeybindAction::NewPane))
         ));
     }
 

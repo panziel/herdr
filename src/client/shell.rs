@@ -4,6 +4,7 @@ mod actions;
 mod agent_animation;
 mod agent_sidebar;
 mod aggregate_navigation;
+mod auto_split;
 mod card_hover;
 mod machine_diagnostics;
 mod workspace_navigation;

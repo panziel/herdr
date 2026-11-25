@@ -168,6 +168,7 @@ pub(crate) fn keybind_help_groups(
                     binding_label(&keybinds.split_horizontal),
                     "split horizontal",
                 ),
+                entry(binding_label(&keybinds.new_pane), "new pane (auto split)"),
                 entry(binding_label(&keybinds.close_pane), "close pane"),
                 entry(binding_label(&keybinds.rename_pane), "rename pane"),
                 entry(binding_label(&keybinds.edit_scrollback), "edit scrollback"),

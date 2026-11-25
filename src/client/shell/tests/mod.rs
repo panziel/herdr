@@ -266,6 +266,7 @@ mod keybindings_settings;
 mod link_hover;
 mod mobile;
 mod mouse_selection;
+mod new_pane;
 mod pane_hover;
 mod pane_move;
 mod popup_focus_projection;

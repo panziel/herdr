@@ -857,6 +857,31 @@ impl ClientShellState {
         (repaint, Vec::new())
     }
 
+    fn auto_split_direction_for(
+        &self,
+        pane_id: Option<&str>,
+    ) -> crate::api::schema::SplitDirection {
+        let hit = pane_id.and_then(|pane_id| {
+            self.hits
+                .panes
+                .iter()
+                .find(|hit| hit.pane_id == pane_id && !hit.popup)
+        });
+        let Some(hit) = hit else {
+            tracing::debug!(?pane_id, "new pane has no rendered target; splitting right");
+            return crate::api::schema::SplitDirection::Right;
+        };
+        let direction = super::auto_split::auto_split_direction(hit);
+        tracing::debug!(
+            pane_id = %hit.pane_id,
+            cols = hit.rect.width,
+            rows = hit.rect.height,
+            ?direction,
+            "new pane resolved split direction"
+        );
+        direction
+    }
+
     pub(super) fn endpoint_method_for_action(
         &mut self,
         action: crate::input::KeybindAction,
@@ -1050,15 +1075,18 @@ impl ClientShellState {
                 source_pane_id: None,
                 target_pane_id: None,
             })),
-            KeybindAction::SplitVertical | KeybindAction::SplitHorizontal => {
+            KeybindAction::SplitVertical
+            | KeybindAction::SplitHorizontal
+            | KeybindAction::NewPane => {
+                let direction = match action {
+                    KeybindAction::SplitVertical => SplitDirection::Right,
+                    KeybindAction::SplitHorizontal => SplitDirection::Down,
+                    _ => self.auto_split_direction_for(focused_pane.as_deref()),
+                };
                 Some(Method::PaneSplit(PaneSplitParams {
                     workspace_id: Some(focused_workspace),
                     target_pane_id: focused_pane,
-                    direction: if action == KeybindAction::SplitVertical {
-                        SplitDirection::Right
-                    } else {
-                        SplitDirection::Down
-                    },
+                    direction,
                     ratio: None,
                     cwd: None,
                     focus: true,

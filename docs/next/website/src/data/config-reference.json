@@ -812,6 +812,12 @@
           "description": "Split pane horizontally (stacked)."
         },
         {
+          "key": "keys.new_pane",
+          "type": "keybinding",
+          "default": "unset",
+          "description": "Split the focused pane along its longer side: side by side when it is wider than tall, stacked otherwise, like zellij's new pane. Unset by default."
+        },
+        {
           "key": "keys.close_pane",
           "type": "keybinding",
           "default": "\"prefix+x\"",
