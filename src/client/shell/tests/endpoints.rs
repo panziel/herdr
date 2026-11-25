@@ -1478,7 +1478,7 @@ fn aggregate_agents_use_configured_rows_machine_token_and_status_colors() {
         .join("\n");
     assert!(text.contains("⏾ Local · local agent"), "frame: {text}");
     assert!(text.contains("! Build · remote agent"), "frame: {text}");
-    assert!(text.contains("grouped"), "frame: {text}");
+    assert!(text.contains("Grouped"), "frame: {text}");
     let toggle = state.hits.agent_sort_toggle;
     assert!(!toggle.is_empty());
     let click = state.handle_raw_events(vec![RawInputEvent::Mouse(MouseEvent {
@@ -1689,7 +1689,7 @@ fn selected_default_view_ignores_inactive_endpoint_projection() {
         .join("\n");
     assert!(text.contains("Local · local agent"), "frame: {text}");
     assert!(text.contains("Build · remote agent"), "frame: {text}");
-    assert!(text.contains("grouped"), "frame: {text}");
+    assert!(text.contains("Grouped"), "frame: {text}");
 }
 
 #[test]
@@ -2558,7 +2558,7 @@ fn navigator_uses_machine_parents_only_for_federated_clients() {
         })
         .collect::<Vec<_>>()
         .join("\n")
-        .contains(" machines"));
+        .contains(" Machines"));
     local.open_navigator_overlay();
     let ClientShellOverlay::Navigator(navigator) = local.overlay.as_ref().expect("navigator")
     else {

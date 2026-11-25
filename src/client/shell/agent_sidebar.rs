@@ -158,14 +158,14 @@ pub(super) fn render_agent_panel_header(
         area.x,
         area.y + 1,
         area.width,
-        " agents",
+        " Agents",
         Style::default()
             .fg(config.palette.overlay0)
             .add_modifier(Modifier::BOLD),
     );
     let sort_label = agent_view_label.unwrap_or(match config.agent_panel_sort {
-        crate::config::AgentPanelSortConfig::Spaces => "grouped",
-        crate::config::AgentPanelSortConfig::Priority => "priority",
+        crate::config::AgentPanelSortConfig::Spaces => "Grouped",
+        crate::config::AgentPanelSortConfig::Priority => "Priority",
     });
     let sort_width = display_width(sort_label).min(area.width as usize) as u16;
     let sort_rect = Rect::new(

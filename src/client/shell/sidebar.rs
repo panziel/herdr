@@ -231,7 +231,7 @@ pub(crate) fn render_sidebar(
         workspace_area.x,
         workspace_area.y,
         workspace_area.width,
-        " spaces",
+        " Spaces",
         Style::default()
             .fg(palette.overlay0)
             .add_modifier(Modifier::BOLD),
