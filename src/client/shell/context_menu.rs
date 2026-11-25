@@ -4,7 +4,10 @@ impl ClientContextMenuOverlay {
     pub(super) fn items(&self) -> Vec<ClientContextMenuItem> {
         use ClientContextMenuAction as Action;
 
-        let item = |label, action| ClientContextMenuItem { label, action };
+        let item = |label: &'static str, action| ClientContextMenuItem {
+            label: label.into(),
+            action,
+        };
         match &self.target {
             ClientContextMenuTarget::Workspace { is_git: false, .. } => {
                 vec![item("Rename", Action::Rename), item("Close", Action::Close)]
@@ -56,6 +59,7 @@ impl ClientContextMenuOverlay {
                 right_click_passthrough,
                 floating,
                 can_float,
+                can_move_to_tab,
                 ..
             } => {
                 let mut items = vec![item("Rename pane", Action::RenamePane)];
@@ -64,6 +68,9 @@ impl ClientContextMenuOverlay {
                 }
                 if source_pane_id.is_some() {
                     items.push(item("Swap with focused pane", Action::SwapWithFocusedPane));
+                }
+                if *can_move_to_tab {
+                    items.push(item("Move to tab...", Action::MoveToTab));
                 }
                 items.extend([
                     item("Split right", Action::SplitRight),
@@ -99,6 +106,14 @@ impl ClientContextMenuOverlay {
                 ]);
                 items
             }
+            ClientContextMenuTarget::PaneMoveTab { tabs, .. } => tabs
+                .iter()
+                .enumerate()
+                .map(|(index, tab)| ClientContextMenuItem {
+                    label: tab.label.clone().into(),
+                    action: Action::MoveToTabChoice(index),
+                })
+                .collect(),
         }
     }
 }
@@ -179,6 +194,7 @@ impl ClientShellState {
             .filter(|candidate| candidate.tab_id == pane.tab_id && candidate.floating.is_none())
             .count()
             > 1;
+        let can_move_to_tab = !self.pane_move_tab_choices(&pane_id).is_empty();
         self.overlay = Some(ClientShellOverlay::ContextMenu(ClientContextMenuOverlay {
             target: ClientContextMenuTarget::Pane {
                 pane_id,
@@ -188,6 +204,7 @@ impl ClientShellState {
                 right_click_passthrough: pane.right_click_passthrough,
                 floating: pane.floating,
                 can_float,
+                can_move_to_tab,
             },
             x,
             y,
@@ -219,6 +236,7 @@ impl ClientShellState {
             outcome.repaint = true;
             return;
         };
+        let (x, y) = (menu.x, menu.y);
         match menu.target {
             ClientContextMenuTarget::Workspace {
                 workspace_id,
@@ -229,6 +247,11 @@ impl ClientShellState {
                 tab_id,
                 workspace_id,
             } => self.activate_tab_context_action(tab_id, workspace_id, action, outcome),
+            ClientContextMenuTarget::Pane { pane_id, .. }
+                if action == ClientContextMenuAction::MoveToTab =>
+            {
+                self.open_pane_move_menu(pane_id, x, y);
+            }
             ClientContextMenuTarget::Pane {
                 pane_id,
                 workspace_id,
@@ -243,6 +266,13 @@ impl ClientShellState {
                 action,
                 outcome,
             ),
+            ClientContextMenuTarget::PaneMoveTab { pane_id, tabs } => {
+                if let ClientContextMenuAction::MoveToTabChoice(index) = action {
+                    if let Some(choice) = tabs.into_iter().nth(index) {
+                        self.request_pane_move_to_tab(pane_id, choice.tab_id, outcome);
+                    }
+                }
+            }
         }
         outcome.repaint = true;
     }

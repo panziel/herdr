@@ -279,24 +279,24 @@ fn pane_menu_offers_float_embed_and_pin_by_pane_kind() {
         Some(ClientShellOverlay::ContextMenu(menu)) => menu
             .items()
             .into_iter()
-            .map(|item| item.label)
+            .map(|item| item.label.into_owned())
             .collect::<Vec<_>>(),
         _ => panic!("pane menu should be open"),
     };
 
     state.open_pane_context_menu("pane_2".into(), 30, 5);
     let floating = labels(&state);
-    assert!(floating.contains(&"Embed pane"));
-    assert!(floating.contains(&"Pin floating pane"));
-    assert!(floating.contains(&"New floating pane"));
+    assert!(floating.contains(&"Embed pane".to_owned()));
+    assert!(floating.contains(&"Pin floating pane".to_owned()));
+    assert!(floating.contains(&"New floating pane".to_owned()));
 
     state.open_pane_context_menu("pane_1".into(), 2, 2);
     let only_tiled = labels(&state);
     assert!(
-        !only_tiled.contains(&"Make pane floating"),
+        !only_tiled.contains(&"Make pane floating".to_owned()),
         "the only tiled pane of a tab stays tiled"
     );
-    assert!(only_tiled.contains(&"New floating pane"));
+    assert!(only_tiled.contains(&"New floating pane".to_owned()));
     assert!(!only_tiled.iter().any(|label| label.contains("Pin")));
 
     let mut projected = state.snapshot.as_deref().cloned().unwrap();
@@ -305,7 +305,7 @@ fn pane_menu_offers_float_embed_and_pin_by_pane_kind() {
     projected.panes.push(second);
     state.set_snapshot(Box::new(projected));
     state.open_pane_context_menu("pane_1".into(), 2, 2);
-    assert!(labels(&state).contains(&"Make pane floating"));
+    assert!(labels(&state).contains(&"Make pane floating".to_owned()));
 }
 
 #[test]

@@ -122,6 +122,7 @@ pub(super) struct ShellHitMap {
     pub(super) notification_toast: Rect,
     pub(super) global_menu_rows: Vec<(Rect, usize)>,
     pub(super) context_menu_rows: Vec<(Rect, usize)>,
+    pub(super) pane_buttons: Vec<super::pane_buttons::PaneButtonHit>,
     pub(super) overlay_primary: Rect,
     pub(super) overlay_clear: Rect,
     pub(super) overlay_cancel: Rect,
@@ -225,6 +226,8 @@ pub(super) enum ClientChromeDrag {
     PaneMove {
         source_pane_id: String,
         target_pane_id: Option<String>,
+        /// Set while the pointer is over another tab of the tab bar.
+        target_tab_id: Option<String>,
     },
     Workspace {
         source_workspace_id: String,
@@ -543,6 +546,9 @@ pub(super) enum ClientContextMenuAction {
     NewFloatingPane,
     ToggleRightClickPassthrough,
     ClosePane,
+    MoveToTab,
+    /// Index into the tab choices of a `PaneMoveTab` menu.
+    MoveToTabChoice(usize),
 }
 
 #[derive(Debug)]
@@ -568,6 +574,11 @@ pub(super) enum ClientContextMenuTarget {
         floating: Option<crate::protocol::ClientShellFloatingPane>,
         /// False for the only tiled pane of its tab, which must stay tiled.
         can_float: bool,
+        can_move_to_tab: bool,
+    },
+    PaneMoveTab {
+        pane_id: String,
+        tabs: Vec<super::pane_move::PaneMoveTabChoice>,
     },
 }
 
@@ -580,7 +591,7 @@ pub(super) struct ClientContextMenuOverlay {
 }
 
 pub(super) struct ClientContextMenuItem {
-    pub(super) label: &'static str,
+    pub(super) label: std::borrow::Cow<'static, str>,
     pub(super) action: ClientContextMenuAction,
 }
 

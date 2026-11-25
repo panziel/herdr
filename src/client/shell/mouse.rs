@@ -1209,6 +1209,7 @@ impl ClientShellState {
                     return;
                 }
                 Some(ClientChromeDrag::PaneMove { source_pane_id, .. }) => {
+                    let target_tab_id = self.pane_drop_tab_at(source_pane_id, point);
                     // Panes swap inside the split tree, so floating panes are never targets.
                     let target_pane_id = self
                         .pane_hit_at(point)
@@ -1217,11 +1218,13 @@ impl ClientShellState {
                         })
                         .map(|hit| hit.pane_id.clone());
                     if let Some(ClientChromeDrag::PaneMove {
-                        target_pane_id: current,
+                        target_pane_id: current_pane,
+                        target_tab_id: current_tab,
                         ..
                     }) = self.chrome_drag.as_mut()
                     {
-                        *current = target_pane_id;
+                        *current_pane = target_pane_id;
+                        *current_tab = target_tab_id;
                     }
                     outcome.repaint = true;
                     return;
@@ -1318,8 +1321,11 @@ impl ClientShellState {
                     ClientChromeDrag::PaneMove {
                         source_pane_id,
                         target_pane_id,
+                        target_tab_id,
                     } => {
-                        if let Some(target_pane_id) = target_pane_id {
+                        if let Some(target_tab_id) = target_tab_id {
+                            self.request_pane_move_to_tab(source_pane_id, target_tab_id, outcome);
+                        } else if let Some(target_pane_id) = target_pane_id {
                             self.push_endpoint_method(
                                 crate::api::schema::Method::PaneSwap(
                                     crate::api::schema::PaneSwapParams {
@@ -2200,6 +2206,10 @@ impl ClientShellState {
                     );
                     return;
                 }
+                if let Some(button) = self.pane_button_at(point) {
+                    self.activate_pane_button(button, outcome);
+                    return;
+                }
                 let top_pane = self.pane_hit_at(point).cloned();
                 let scrollbar_hit = self
                     .hits
@@ -2278,6 +2288,7 @@ impl ClientShellState {
                         self.chrome_drag = Some(ClientChromeDrag::PaneMove {
                             source_pane_id: hit.pane_id.clone(),
                             target_pane_id: None,
+                            target_tab_id: None,
                         });
                         self.push_endpoint_method(
                             crate::api::schema::Method::PaneFocus(crate::api::schema::PaneTarget {

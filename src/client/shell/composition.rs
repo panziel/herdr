@@ -70,6 +70,7 @@ impl ClientShellState {
             sidebar_collapsed: false,
             sidebar_section_split: self.sidebar_section_split,
             tab_drag_insert_index: None,
+            pane_drop_tab_id: None,
             selected_workspace_id: self
                 .navigate_workspace_id
                 .as_ref()
@@ -199,6 +200,10 @@ impl ClientShellState {
             Some(ClientChromeDrag::Tab { insert_index, .. }) => *insert_index,
             _ => None,
         };
+        let pane_drop_tab_id = match &self.chrome_drag {
+            Some(ClientChromeDrag::PaneMove { target_tab_id, .. }) => target_tab_id.as_deref(),
+            _ => None,
+        };
         let (dragged_workspace_id, workspace_drop_indicator_row) = match &self.chrome_drag {
             Some(ClientChromeDrag::Workspace {
                 source_workspace_id,
@@ -230,6 +235,7 @@ impl ClientShellState {
                 sidebar_collapsed: self.sidebar_collapsed,
                 sidebar_section_split: self.sidebar_section_split,
                 tab_drag_insert_index,
+                pane_drop_tab_id,
                 selected_workspace_id: self
                     .navigate_workspace_id
                     .as_ref()
@@ -366,6 +372,7 @@ impl ClientShellState {
         });
         blit_pane_surface(&mut frame, &surface.frame, layout.pane_surface);
         pane_icons::render_pane_title_icons(&mut frame, &mut self.hits, snapshot, &self.config);
+        pane_buttons::render_pane_buttons(&mut frame, &mut self.hits, snapshot, &self.config);
         self.render_pane_hover(&mut frame);
         self.render_card_hover(&mut frame);
         restore_mode_bar(&mut frame, mode_bar, mode_bar_cells.as_deref());

@@ -138,6 +138,8 @@ fn icons_are_omitted_when_disabled_or_unsupported() {
 }
 
 const PANE_TITLE: &str = "╭── claude  ◐ running ───────╮";
+/// `PANE_TITLE` as composed without an icon: the free border keeps the close button.
+const PANE_TITLE_WITH_CLOSE: &str = "╭── claude  ◐ running ───[x]─╮";
 
 fn bordered_pane(pane_id: &str, rect: SurfaceRect) -> PaneSurfacePane {
     let mut pane = surface().panes.remove(0);
@@ -206,12 +208,15 @@ fn pane_title_shows_the_running_agent_icon_before_its_name() {
 #[test]
 fn pane_title_keeps_its_text_when_the_icon_does_not_fit_or_is_unsupported() {
     let crowded = "╭── claude  ◐ running ──╮";
-    for (host, title) in [(true, crowded), (false, PANE_TITLE)] {
+    for (host, title, expected) in [
+        (true, crowded, crowded),
+        (false, PANE_TITLE, PANE_TITLE_WITH_CLOSE),
+    ] {
         let mut state = pane_title_state(host, titled_surface(title));
         let frame = state.compose(106, 30).unwrap();
         assert_eq!(
             pane_title_row(&state, &frame).concat(),
-            title,
+            expected,
             "host={host}"
         );
     }
@@ -225,7 +230,10 @@ fn pane_title_without_a_known_agent_icon_is_unchanged() {
     state.set_snapshot(Box::new(projected));
     state.set_pane_surface(titled_surface(PANE_TITLE));
     let frame = state.compose(106, 30).unwrap();
-    assert_eq!(pane_title_row(&state, &frame).concat(), PANE_TITLE);
+    assert_eq!(
+        pane_title_row(&state, &frame).concat(),
+        PANE_TITLE_WITH_CLOSE
+    );
 }
 
 #[test]
@@ -247,5 +255,5 @@ fn pane_title_covered_by_a_floating_pane_is_left_alone() {
     let row: String = (rect.x..rect.right())
         .map(|x| cell(&frame, x, rect.y).symbol.as_str())
         .collect();
-    assert_eq!(row, PANE_TITLE);
+    assert_eq!(row, PANE_TITLE_WITH_CLOSE);
 }

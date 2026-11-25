@@ -13,6 +13,7 @@ pub(crate) fn render_tab_bar(
     tab_scroll: &mut usize,
     reveal_focused_tab: &mut bool,
     tab_drag_insert_index: Option<usize>,
+    pane_drop_tab_id: Option<&str>,
     hits: &mut ShellHitMap,
 ) {
     let palette = &config.palette;
@@ -249,6 +250,17 @@ pub(crate) fn render_tab_bar(
             );
         }
     }
+    if let Some(rect) = pane_drop_tab_id.and_then(|tab_id| {
+        hits.tabs
+            .iter()
+            .find(|(_, hit_tab_id)| hit_tab_id == tab_id)
+            .map(|(rect, _)| *rect)
+    }) {
+        buffer.set_style(
+            rect,
+            Style::default().add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+        );
+    }
     render_tab_bar_status(buffer, area, snapshot, palette);
 }
 
@@ -428,7 +440,7 @@ fn max_tab_scroll(widths: &[u16], available: u16) -> usize {
     start
 }
 
-fn tab_label(tab: &ClientShellTab) -> String {
+pub(in crate::client::shell) fn tab_label(tab: &ClientShellTab) -> String {
     let label = match tab.label.parse::<usize>().ok() {
         Some(number) if !tab.custom_label || number == tab.number => {
             format!("Tab #{}", tab.number)

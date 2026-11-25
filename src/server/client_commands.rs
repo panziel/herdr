@@ -272,6 +272,10 @@ mod tests {
                 "66b43e5f90d106b06a2bbf534e0ff66a23bca75f0ddfba5588eb1c2631be2091",
             ),
             (
+                "pane.move",
+                "eaed63cf205db2dc043ecce9e1a79cdca7f6e2521b364226bbf3121affadce7c",
+            ),
+            (
                 "pane.pin",
                 "820d596088b233ddc0002a8c01985f6580e7f96c643ddbe3bfb626fae542eb88",
             ),

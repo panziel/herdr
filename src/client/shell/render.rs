@@ -13,7 +13,7 @@ pub(super) use overlays::{render_client_overlay, render_context_menu, render_glo
 pub(super) use sidebar::{
     render_collapsed_sidebar, render_sidebar, render_workspace_card, workspace_entries,
 };
-pub(super) use tabs::{render_tab_bar, restore_tab_contrast, tab_bar_status_width};
+pub(super) use tabs::{render_tab_bar, restore_tab_contrast, tab_bar_status_width, tab_label};
 
 pub(in crate::client::shell) fn render_sidebar_background(
     buffer: &mut Buffer,
@@ -246,6 +246,7 @@ pub(super) struct ShellRenderState<'a> {
     pub(super) sidebar_collapsed: bool,
     pub(super) sidebar_section_split: f32,
     pub(super) tab_drag_insert_index: Option<usize>,
+    pub(super) pane_drop_tab_id: Option<&'a str>,
     pub(super) selected_workspace_id: Option<&'a WorkspaceNavigationTarget>,
     pub(super) reveal_navigation_workspace: &'a mut bool,
     pub(super) dragged_workspace_id: Option<&'a str>,
@@ -320,6 +321,7 @@ pub(super) fn render_shell(
             state.tab_scroll,
             state.reveal_focused_tab,
             state.tab_drag_insert_index,
+            state.pane_drop_tab_id,
             &mut hits,
         );
     }
