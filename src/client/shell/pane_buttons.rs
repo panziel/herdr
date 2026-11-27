@@ -18,13 +18,14 @@ pub(super) struct PaneButtonHit {
     pub(super) action: PaneButtonAction,
 }
 
-/// ASCII only: ambiguous-width symbols render double-width in CJK terminals
-/// and would shift the hit area away from the drawn label.
+/// Every symbol must occupy one cell: placement writes one char per cell.
+/// The arrows share the East Asian ambiguous width of the border glyphs they
+/// replace, so a terminal that widens one also misaligns the whole border.
 fn button_label(action: PaneButtonAction, zoomed: bool) -> &'static str {
     match action {
         PaneButtonAction::MoveToTab => "[->]",
-        PaneButtonAction::ToggleZoom if zoomed => "[-]",
-        PaneButtonAction::ToggleZoom => "[+]",
+        PaneButtonAction::ToggleZoom if zoomed => "[↙]",
+        PaneButtonAction::ToggleZoom => "[↗]",
         PaneButtonAction::Close => "[x]",
     }
 }
@@ -109,7 +110,7 @@ fn place_buttons(
         .min(frame.width);
     let width = buttons
         .iter()
-        .map(|(_, label)| label.len() as u16)
+        .map(|(_, label)| label_width(label))
         .sum::<u16>()
         .saturating_add(buttons.len() as u16 - 1);
     let Some(start) = end.checked_sub(width).filter(|start| *start > rect.x + 1) else {
@@ -131,7 +132,7 @@ fn place_buttons(
         for (offset, symbol) in label.chars().enumerate() {
             frame.cells[row + usize::from(x) + offset].symbol = symbol.to_string();
         }
-        let label_width = label.len() as u16;
+        let label_width = label_width(label);
         placed.push(PaneButtonHit {
             rect: Rect::new(x, y, label_width, 1),
             pane_id: hit.pane_id.clone(),
@@ -140,6 +141,10 @@ fn place_buttons(
         x = x.saturating_add(label_width + 1);
     }
     placed
+}
+
+fn label_width(label: &str) -> u16 {
+    label.chars().count() as u16
 }
 
 impl ClientShellState {

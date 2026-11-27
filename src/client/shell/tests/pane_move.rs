@@ -187,7 +187,7 @@ fn border_buttons_sit_before_the_top_right_corner() {
     let rect = state.hits.panes[0].rect;
     let border = top_border(&frame, rect);
     assert!(border.starts_with("┌─ shell ─"), "{border}");
-    assert!(border.ends_with("─[->]─[+]─[x]─┐"), "{border}");
+    assert!(border.ends_with("─[->]─[↗]─[x]─┐"), "{border}");
     assert_eq!(
         state
             .hits
@@ -200,6 +200,29 @@ fn border_buttons_sit_before_the_top_right_corner() {
 }
 
 #[test]
+fn border_button_hit_areas_cover_exactly_their_drawn_labels() {
+    use super::super::pane_buttons::PaneButtonAction;
+
+    let mut state = state_with(two_tab_snapshot(), " shell ");
+    let frame = state.compose(106, 20).expect("frame");
+    for (action, label) in [
+        (PaneButtonAction::MoveToTab, "[->]"),
+        (PaneButtonAction::ToggleZoom, "[↗]"),
+        (PaneButtonAction::Close, "[x]"),
+    ] {
+        let rect = button(&state, "pane_1", action);
+        let drawn: String = (rect.x..rect.right())
+            .map(|x| {
+                frame.cells[usize::from(rect.y) * usize::from(frame.width) + usize::from(x)]
+                    .symbol
+                    .clone()
+            })
+            .collect();
+        assert_eq!(drawn, label, "{action:?}");
+    }
+}
+
+#[test]
 fn border_buttons_only_offer_actions_that_apply() {
     let mut projected = two_tab_snapshot();
     projected.tabs.truncate(1);
@@ -209,7 +232,7 @@ fn border_buttons_only_offer_actions_that_apply() {
     let rect = state.hits.panes[0].rect;
     let border = top_border(&frame, rect);
     assert!(border.ends_with("─[x]─┐"), "{border}");
-    assert!(!border.contains("[->]") && !border.contains("[+]"));
+    assert!(!border.contains("[->]") && !border.contains("[↗]"));
 }
 
 #[test]
@@ -313,7 +336,7 @@ fn moving_out_of_a_zoomed_tab_unzooms_it_first() {
     projected.tabs[1].zoomed = true;
     let mut state = state_with(projected, " shell ");
     let frame = state.compose(106, 20).expect("frame");
-    assert!(top_border(&frame, state.hits.panes[0].rect).contains("[-]"));
+    assert!(top_border(&frame, state.hits.panes[0].rect).contains("[↙]"));
 
     let mut outcome = ClientShellInput::default();
     state.request_pane_move_to_tab("pane_1".into(), "tab_2".into(), &mut outcome);
