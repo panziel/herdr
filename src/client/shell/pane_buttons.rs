@@ -23,7 +23,7 @@ pub(super) struct PaneButtonHit {
 /// replace, so a terminal that widens one also misaligns the whole border.
 fn button_label(action: PaneButtonAction, zoomed: bool) -> &'static str {
     match action {
-        PaneButtonAction::MoveToTab => "[->]",
+        PaneButtonAction::MoveToTab => "[⇥]",
         PaneButtonAction::ToggleZoom if zoomed => "[↙]",
         PaneButtonAction::ToggleZoom => "[↗]",
         PaneButtonAction::Close => "[x]",

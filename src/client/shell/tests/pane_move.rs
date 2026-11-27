@@ -187,7 +187,7 @@ fn border_buttons_sit_before_the_top_right_corner() {
     let rect = state.hits.panes[0].rect;
     let border = top_border(&frame, rect);
     assert!(border.starts_with("┌─ shell ─"), "{border}");
-    assert!(border.ends_with("─[->]─[↗]─[x]─┐"), "{border}");
+    assert!(border.ends_with("─[⇥]─[↗]─[x]─┐"), "{border}");
     assert_eq!(
         state
             .hits
@@ -206,7 +206,7 @@ fn border_button_hit_areas_cover_exactly_their_drawn_labels() {
     let mut state = state_with(two_tab_snapshot(), " shell ");
     let frame = state.compose(106, 20).expect("frame");
     for (action, label) in [
-        (PaneButtonAction::MoveToTab, "[->]"),
+        (PaneButtonAction::MoveToTab, "[⇥]"),
         (PaneButtonAction::ToggleZoom, "[↗]"),
         (PaneButtonAction::Close, "[x]"),
     ] {
@@ -232,7 +232,7 @@ fn border_buttons_only_offer_actions_that_apply() {
     let rect = state.hits.panes[0].rect;
     let border = top_border(&frame, rect);
     assert!(border.ends_with("─[x]─┐"), "{border}");
-    assert!(!border.contains("[->]") && !border.contains("[↗]"));
+    assert!(!border.contains("[⇥]") && !border.contains("[↗]"));
 }
 
 #[test]
