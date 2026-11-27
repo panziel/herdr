@@ -90,6 +90,53 @@ fn compact_agent_card_keeps_tab_context_after_the_name() {
     assert!(!line.contains("duo"), "{line:?}");
 }
 
+fn named_pane_state(style: SidebarCardStyle, pane_label: &str) -> ClientShellState {
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.config.agents.card_style = style;
+    state.sidebar_width = 40;
+    state.sidebar_width_manual = true;
+    let mut projected = snapshot();
+    projected.workspaces[0].label = "duo".into();
+    projected.tabs[0].label = "ci".into();
+    projected.tabs[0].custom_label = true;
+    projected.panes[0].label = Some(pane_label.into());
+    projected.agents = vec![agent("pane_1", "kiro", AgentStatus::Working, true)];
+    state.set_snapshot(Box::new(projected));
+    state.set_pane_surface(surface());
+    state
+}
+
+#[test]
+fn compact_agent_card_shows_user_named_pane_after_tab() {
+    let mut state = named_pane_state(SidebarCardStyle::Compact, "reviewer");
+    let frame = state.compose(106, 30).unwrap();
+    let rect = state.hits.agents[0].0;
+    let line = card_line(&frame, rect, rect.y + 1);
+    assert!(line.contains("◐ kiro · ci · reviewer"), "{line:?}");
+}
+
+#[test]
+fn full_agent_card_shows_user_named_pane_in_location() {
+    let mut state = named_pane_state(SidebarCardStyle::Full, "reviewer");
+    let frame = state.compose(106, 30).unwrap();
+    let rect = state.hits.agents[0].0;
+    let location_line = card_line(&frame, rect, rect.y + 2);
+    assert!(
+        location_line.contains("duo · ci · reviewer"),
+        "{location_line:?}"
+    );
+}
+
+#[test]
+fn agent_card_omits_pane_name_that_repeats_the_card_name() {
+    let mut state = named_pane_state(SidebarCardStyle::Compact, "kiro");
+    let frame = state.compose(106, 30).unwrap();
+    let rect = state.hits.agents[0].0;
+    let line = card_line(&frame, rect, rect.y + 1);
+    assert!(line.contains("◐ kiro · ci "), "{line:?}");
+    assert!(!line.contains("ci · kiro"), "{line:?}");
+}
+
 #[test]
 fn full_agent_card_puts_location_on_its_own_row() {
     let mut state = card_state(SidebarCardStyle::Full);

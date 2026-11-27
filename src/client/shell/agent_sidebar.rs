@@ -28,15 +28,18 @@ pub(super) struct AgentCardContent {
     pub(super) space: String,
     pub(super) machine: Option<String>,
     pub(super) tab: Option<String>,
+    /// 用户给窗格起的名字；与卡片名称相同时为 None，避免重复显示。
+    pub(super) pane: Option<String>,
 }
 
 impl AgentCardContent {
-    /// full 卡片的位置行：`machine · space · tab`。
+    /// full 卡片的位置行：`machine · space · tab · pane`。
     fn location(&self) -> String {
         [
             self.machine.as_deref(),
             Some(self.space.as_str()),
             self.tab.as_deref(),
+            self.pane.as_deref(),
         ]
         .into_iter()
         .flatten()
@@ -44,13 +47,17 @@ impl AgentCardContent {
         .join(" · ")
     }
 
-    /// compact 卡片名称后的上下文：`machine · tab`（space 已画在上边框）。
+    /// compact 卡片名称后的上下文：`machine · tab · pane`（space 已画在上边框）。
     fn context(&self) -> String {
-        [self.machine.as_deref(), self.tab.as_deref()]
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>()
-            .join(" · ")
+        [
+            self.machine.as_deref(),
+            self.tab.as_deref(),
+            self.pane.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(" · ")
     }
 }
 
@@ -348,11 +355,16 @@ pub(super) fn agent_row(
         )
     });
     let icon_glyph = icon.map(AgentIconSlot::glyph);
+    let card_label = agent_label.or(pane_label).unwrap_or("agent");
     let card = AgentCardContent {
-        label: agent_label.or(pane_label).unwrap_or("agent").to_owned(),
+        label: card_label.to_owned(),
         space: workspace.label.clone(),
         machine: machine.map(str::to_owned),
         tab: tab_label.map(str::to_owned),
+        pane: pane
+            .and_then(|pane| pane.label.as_deref())
+            .filter(|label| *label != card_label)
+            .map(str::to_owned),
     };
     let rows = crate::ui::sidebar_agent_rows(
         &config.agents,
@@ -494,8 +506,8 @@ fn render_plain_agent_row(
     }
 }
 
-/// compact 卡片把 space 名画在上边框，内容保持一行（`icon name · 机器/标签页  state`）；
-/// full 卡片把位置（`machine · space · tab`）放到单独一行。
+/// compact 卡片把 space 名画在上边框，内容保持一行（`icon name · 机器/标签页/窗格  state`）；
+/// full 卡片把位置（`machine · space · tab · pane`）放到单独一行。
 pub(super) fn render_agent_card(
     buffer: &mut Buffer,
     rect: Rect,
