@@ -1,7 +1,7 @@
 id = "agy"
-version = "2026.10.05.1"
+version = "2026.11.27.1"
 min_engine_version = 1
-updated_at = "2026-10-05T00:00:00Z"
+updated_at = "2026-11-27T00:00:00Z"
 aliases = ["antigravity", "antigravity-cli"]
 
 # Evidence: Antigravity CLI 1.2.17 live pane reads, plus reporter captures
@@ -17,6 +17,10 @@ aliases = ["antigravity", "antigravity-cli"]
 # Some captures hold only the two footer rows, so dialog rules must not
 # require the question text.
 #
+# A user-configured status line can add rows below the "esc to cancel" /
+# "? for shortcuts" footer, so rules must not assume the footer or the dialog
+# key-hint row are the last rows on screen.
+#
 # Working turns draw a braille spinner followed by either an -ing word or a
 # thought summary above the prompt box, and the footer reads "esc to cancel"
 # directly under the prompt box's bottom border. The idle footer reads
@@ -30,23 +34,23 @@ aliases = ["antigravity", "antigravity-cli"]
 id = "permission_prompt"
 state = "blocked"
 priority = 300
-region = "bottom_non_empty_lines(2)"
+region = "bottom_non_empty_lines(8)"
 visible_blocker = true
-contains = ["navigate", "tab amend"]
+line_regex = ['(?i)\bnavigate\b.*\btab amend\b']
 
 [[rules]]
 id = "question_prompt"
 state = "blocked"
 priority = 290
-region = "bottom_non_empty_lines(2)"
+region = "bottom_non_empty_lines(8)"
 visible_blocker = true
-contains = ["navigate", "esc skip"]
+line_regex = ['(?i)\bnavigate\b.*\besc skip\b']
 
 [[rules]]
 id = "trust_prompt"
 state = "blocked"
 priority = 280
-region = "bottom_non_empty_lines(8)"
+region = "bottom_non_empty_lines(12)"
 visible_blocker = true
 contains = ["do you trust the contents of this project?", "yes, i trust this folder", "enter confirm"]
 
@@ -67,9 +71,9 @@ any = [
 id = "esc_cancel_footer_working"
 state = "working"
 priority = 110
-region = "bottom_non_empty_lines(2)"
+region = "after_last_horizontal_rule"
 visible_working = true
-regex = ['(?m)^\s*─{3,}\s*esc to cancel\b']
+regex = ['\A\s*esc to cancel\b']
 
 [[rules]]
 id = "spinner_working"
